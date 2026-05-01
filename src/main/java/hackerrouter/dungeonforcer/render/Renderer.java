@@ -62,7 +62,8 @@ public class Renderer {
                 spawner.x, spawner.y, spawner.z,
                 spawner.x + 1, spawner.y + 1, spawner.z + 1);
         Gizmos.cuboid(spawnerBlock,
-                GizmoStyle.strokeAndFill(strokeColor, 2.5f, fillColor));
+                GizmoStyle.strokeAndFill(strokeColor, 2.5f, fillColor))
+                .setAlwaysOnTop();
 
         // 地牢范围描边
         int minX = spawner.x - spawner.sizeX - 1;
@@ -75,7 +76,8 @@ public class Renderer {
         AABB dungeonBounds = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
         Gizmos.cuboid(dungeonBounds,
                 GizmoStyle.stroke(ARGB.color(77, ARGB.red(strokeColor),
-                        ARGB.green(strokeColor), ARGB.blue(strokeColor)), 1.5f));
+                        ARGB.green(strokeColor), ARGB.blue(strokeColor)), 1.5f))
+                .setAlwaysOnTop();
     }
 
     private static void renderChunkCross(int chunkX, int chunkZ) {
@@ -85,10 +87,10 @@ public class Renderer {
         int yellow = ARGB.color(204, 255, 255, 0);
 
         // X 轴线
-        Gizmos.line(new Vec3(x - 8, y, z), new Vec3(x + 8, y, z), yellow, 2.0f);
+        Gizmos.line(new Vec3(x - 8, y, z), new Vec3(x + 8, y, z), yellow, 2.0f).setAlwaysOnTop();
         // Z 轴线
-        Gizmos.line(new Vec3(x, y, z - 8), new Vec3(x, y, z + 8), yellow, 2.0f);
+        Gizmos.line(new Vec3(x, y, z - 8), new Vec3(x, y, z + 8), yellow, 2.0f).setAlwaysOnTop();
         // Y 轴线
-        Gizmos.line(new Vec3(x, y - 8, z), new Vec3(x, y + 8, z), yellow, 2.0f);
+        Gizmos.line(new Vec3(x, y - 8, z), new Vec3(x, y + 8, z), yellow, 2.0f).setAlwaysOnTop();
     }
 }

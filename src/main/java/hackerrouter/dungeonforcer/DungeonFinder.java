@@ -329,20 +329,31 @@ public class DungeonFinder {
     }
 
     private boolean trySetBlocks(DungeonCheckResult check) {
+        int holeGains = 0;
         for (int[] pos : check.unknownPositions) {
             if (pos[3] == SOLID) {
+                // 地板/天花板 unknown → 设为 SOLID（地牢需要实心地板/天花板）
                 setBlock(pos[0], pos[1], pos[2], SOLID);
+            } else if (pos[3] == -1) {
+                // 墙壁 hole 候选位置 — 设为 AIR 使其成为 hole
+                // （地牢需要 1-5 个 hole 才能生成）
+                setBlock(pos[0], pos[1], pos[2], AIR);
+                // 同时设置上方方块为 AIR（hole 需要 2 格高的空气）
+                setBlock(pos[0], pos[1] + 1, pos[2], AIR);
+                holeGains++;
             }
         }
-        int totalHoles = check.knownHoles;
+        int totalHoles = check.knownHoles + holeGains;
         return totalHoles >= 1 && totalHoles <= 5;
     }
 
     private byte[] saveUnknownBlocks(List<int[]> positions) {
-        byte[] saved = new byte[positions.size()];
+        // 为每个位置保存 2 个字节：本身 + 上方（hole 候选需要设置上方方块）
+        byte[] saved = new byte[positions.size() * 2];
         for (int i = 0; i < positions.size(); i++) {
             int[] pos = positions.get(i);
-            saved[i] = getBlock(pos[0], pos[1], pos[2]);
+            saved[i * 2] = getBlock(pos[0], pos[1], pos[2]);
+            saved[i * 2 + 1] = getBlock(pos[0], pos[1] + 1, pos[2]);
         }
         return saved;
     }
@@ -350,7 +361,8 @@ public class DungeonFinder {
     private void restoreUnknownBlocks(List<int[]> positions, byte[] saved) {
         for (int i = 0; i < positions.size(); i++) {
             int[] pos = positions.get(i);
-            setBlock(pos[0], pos[1], pos[2], saved[i]);
+            setBlock(pos[0], pos[1], pos[2], saved[i * 2]);
+            setBlock(pos[0], pos[1] + 1, pos[2], saved[i * 2 + 1]);
         }
     }
 
