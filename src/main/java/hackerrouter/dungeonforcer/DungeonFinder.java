@@ -158,11 +158,13 @@ public class DungeonFinder {
             Spawner spawner = result.spawner;
             boolean isLastNormal = (attemptIndex == totalAttempts - 1) && !hasDeep;
             if (!isLastNormal || !searchType.hasType || spawner.type == preferredType) {
-                current.spawners[current.spawnerCount] = spawner;
-                current.spawnerCount++;
-                recursiveSearchNormal(nextLo, nextHi, attemptIndex + 1, totalAttempts,
-                        yMin, yMax, hasDeep, deepRngLo, deepRngHi, current);
-                current.spawnerCount--;
+                if (current.spawnerCount < SpawnerCombination.MAX_SPAWNERS) {
+                    current.spawners[current.spawnerCount] = spawner;
+                    current.spawnerCount++;
+                    recursiveSearchNormal(nextLo, nextHi, attemptIndex + 1, totalAttempts,
+                            yMin, yMax, hasDeep, deepRngLo, deepRngHi, current);
+                    current.spawnerCount--;
+                }
             }
             featureSim.undoAll();
         }
@@ -225,11 +227,13 @@ public class DungeonFinder {
             Spawner spawner = result.spawner;
             boolean isLast = (attemptIndex == totalAttempts - 1);
             if (!isLast || !searchType.hasType || spawner.type == preferredType) {
-                current.spawners[current.spawnerCount] = spawner;
-                current.spawnerCount++;
-                recursiveSearchDeep(nextLo, nextHi, attemptIndex + 1, totalAttempts,
-                        yMin, yMax, current);
-                current.spawnerCount--;
+                if (current.spawnerCount < SpawnerCombination.MAX_SPAWNERS) {
+                    current.spawners[current.spawnerCount] = spawner;
+                    current.spawnerCount++;
+                    recursiveSearchDeep(nextLo, nextHi, attemptIndex + 1, totalAttempts,
+                            yMin, yMax, current);
+                    current.spawnerCount--;
+                }
             }
             featureSim.undoAll();
         }
@@ -239,7 +243,7 @@ public class DungeonFinder {
         results.add(combo);
         if (results.size() > MAX_RESULTS * 2) {
             Collections.sort(results);
-            results = new ArrayList<>(results.subList(0, MAX_RESULTS));
+            results.subList(MAX_RESULTS, results.size()).clear();
         }
     }
 

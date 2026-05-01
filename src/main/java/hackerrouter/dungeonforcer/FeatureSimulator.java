@@ -1,7 +1,6 @@
 package hackerrouter.dungeonforcer;
 
 import hackerrouter.dungeonforcer.rng.WorldgenRandom;
-import hackerrouter.dungeonforcer.rng.XoroshiroRandomSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,8 +43,6 @@ public class FeatureSimulator {
         }
 
         simulateShell(random, lx, lz, originY, sizeX1, sizeZ1);
-        long shellRngLo = random.getSeedLo();
-        long shellRngHi = random.getSeedHi();
 
         simulateChests(random, lx, lz, originY, sizeX, sizeZ);
 

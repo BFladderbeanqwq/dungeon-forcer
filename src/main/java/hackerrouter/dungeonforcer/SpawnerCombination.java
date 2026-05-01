@@ -150,10 +150,9 @@ public class SpawnerCombination implements Comparable<SpawnerCombination> {
                     int cy = center.y + dy;
                     int total = 0, typed = 0;
                     for (int k = 0; k < spawnerCount; k++) {
-                        if (spawners[k].type != preferredType) continue;
                         if (distanceSq(spawners[k], sx, cy, sz) < 256) {
-                            typed++;
                             total++;
+                            if (spawners[k].type == preferredType) typed++;
                         }
                     }
                     int score = (typed << 3) + total;

@@ -1,12 +1,12 @@
 package hackerrouter.dungeonforcer.render;
 
 import hackerrouter.dungeonforcer.Spawner;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class RenderQueue {
-    private static final List<Spawner> spawnerHighlights = new ArrayList<>();
-    private static final List<int[]> chunkCrosses = new ArrayList<>();
+    private static final List<Spawner> spawnerHighlights = new CopyOnWriteArrayList<>();
+    private static final List<int[]> chunkCrosses = new CopyOnWriteArrayList<>();
 
     public static void addSpawnerHighlight(Spawner spawner) {
         spawnerHighlights.add(spawner.copy());

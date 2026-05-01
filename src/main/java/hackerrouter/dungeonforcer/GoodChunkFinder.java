@@ -12,15 +12,12 @@ public class GoodChunkFinder {
         public final int chunkZ;
         public final int potentialSpawners;
         public final double score;
-        public final List<DungeonFinder.DungeonAttempt> attempts;
 
-        public ChunkResult(int chunkX, int chunkZ, int potentialSpawners,
-                           double score, List<DungeonFinder.DungeonAttempt> attempts) {
+        public ChunkResult(int chunkX, int chunkZ, int potentialSpawners, double score) {
             this.chunkX = chunkX;
             this.chunkZ = chunkZ;
             this.potentialSpawners = potentialSpawners;
             this.score = score;
-            this.attempts = attempts;
         }
 
         @Override
@@ -64,7 +61,6 @@ public class GoodChunkFinder {
 
     private static ChunkResult evaluateChunk(int chunkX, int chunkZ, long worldSeed,
                                              int featureIndexNormal, int featureIndexDeep) {
-        List<DungeonFinder.DungeonAttempt> allAttempts = new ArrayList<>();
         double score = 0;
         int potentialSpawners = 0;
 
@@ -130,7 +126,6 @@ public class GoodChunkFinder {
             }
         }
 
-        allAttempts.addAll(normalAttempts);
-        return new ChunkResult(chunkX, chunkZ, potentialSpawners, score, allAttempts);
+        return new ChunkResult(chunkX, chunkZ, potentialSpawners, score);
     }
 }

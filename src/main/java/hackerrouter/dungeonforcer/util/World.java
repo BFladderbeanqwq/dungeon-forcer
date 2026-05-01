@@ -50,10 +50,10 @@ public class World {
         BlockState state = world.getBlockState(pos);
 
         if (state.is(Blocks.CHEST)) {
-            return DungeonFinder.CHEST;
+            return DungeonFinder.BLOCK_CHEST;
         }
         if (state.is(Blocks.SPAWNER)) {
-            return DungeonFinder.SPAWNER;
+            return DungeonFinder.BLOCK_SPAWNER;
         }
         if (state.isAir()) {
             return DungeonFinder.AIR;
