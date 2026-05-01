@@ -9,26 +9,21 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Core search algorithm — matches original 1.17 mod logic, ported to 26.1.
+ * Core search algorithm for DungeonForcer mod (26.1).
  *
- * Key design: player can only modify blocks outside the target chunk.
- * Dungeon bounds may extend outside the chunk (origin is inside, but sizeX/sizeZ push walls beyond).
+ * Key insight: vanilla's placement chain uses Stream.flatMap which is LAZY in Java 21+.
+ * This means placement RNG and feature RNG are INTERLEAVED per attempt:
+ *   attempt1: InSquare(2) + HeightRange(1) + feature.place(sizeX+sizeZ+...)
+ *   attempt2: InSquare(2) + HeightRange(1) + feature.place(sizeX+sizeZ+...)
+ *   ...
  *
- * Buffer fills the full 24x24 area (chunk ±4 blocks),
- * including neighboring chunk edges.
+ * If a previous attempt succeeds, its extra RNG consumption (shell mossy + chest + spawner type)
+ * affects all subsequent attempts' positions AND sizes.
  *
- * Check logic clamps dungeon bounds to chunk (0-15):
- * - Floor/ceiling: only check within chunk, skip outside
- * - Exit count: only count wall positions inside chunk
- * - floorBlocksNeeded = total floor area - chunk overlap area
- *
- * Pass condition: allSolid && exitCount <= 5 && (exitCount >= 1 || floorBlocksNeeded != 0)
+ * Therefore we cannot pre-compute all attempt positions. Instead, we dynamically compute
+ * each attempt during recursive search, passing the shared RNG state forward.
  */
 public class DungeonFinder {
-
-    private static final SpawnerType[] MOB_SPAWNER_ENTITIES = {
-            SpawnerType.SKELETON, SpawnerType.ZOMBIE, SpawnerType.ZOMBIE, SpawnerType.SPIDER
-    };
 
     public static final int WORLD_MIN_Y = -64;
     public static final int WORLD_MAX_Y = 319;
@@ -43,9 +38,9 @@ public class DungeonFinder {
     public static final byte AIR = 2;
     public static final byte CHEST = 4;
     public static final byte SPAWNER = 8;
-    /** SOLID | SPAWNER — marks spawner position in buffer */
+    /** marks spawner position in buffer */
     public static final byte BLOCK_SPAWNER = SOLID | SPAWNER;
-    /** SOLID | CHEST — marks chest position in buffer */
+    /** marks chest position in buffer */
     public static final byte BLOCK_CHEST = SOLID | CHEST;
 
     public static final int NORMAL_ATTEMPTS = 10;
@@ -57,101 +52,22 @@ public class DungeonFinder {
     public static final int DEEP_Y_MAX = -1;
 
     public static final int STEP_ORDINAL = 3;
-
     public static final int MAX_RESULTS = 50;
 
     private byte[] buffer;
-
     private int chunkBlockX;
     private int chunkBlockZ;
 
-    /** block change records per attempt, for backtracking */
-    private List<List<int[]>> changedAll;
-    /** chest change records per attempt, separate from shell (for per-iteration undo) */
-    private List<List<int[]>> changedChestsAll;
-
     private List<SpawnerCombination> results;
-
     private SearchType searchType;
     private SpawnerType preferredType;
-    private int activationRange;
+
+    private FeatureSimulator featureSim;
 
     public DungeonFinder() {
         this.buffer = new byte[BUFFER_SIZE];
         this.results = new ArrayList<>();
-        this.activationRange = 16;
     }
-
-    /**
-     * Get block from buffer.
-     * Out-of-bounds Y returns AIR.
-     * Out-of-bounds XZ returns UNKNOWN.
-     */
-    private byte getBlock(int bx, int by, int bz) {
-        if (by < 0 || by >= BUFFER_Y) return AIR;
-        if (bx < 0 || bx >= BUFFER_XZ || bz < 0 || bz >= BUFFER_XZ) return UNKNOWN;
-        return buffer[bx * BUFFER_XZ * BUFFER_Y + by * BUFFER_XZ + bz];
-    }
-
-    private void setBlock(int bx, int by, int bz, byte state) {
-        if (bx >= 0 && bx < BUFFER_XZ && by >= 0 && by < BUFFER_Y && bz >= 0 && bz < BUFFER_XZ) {
-            buffer[bx * BUFFER_XZ * BUFFER_Y + by * BUFFER_XZ + bz] = state;
-        }
-    }
-
-    /**
-     * Set block and record change (for backtracking).
-     * @param attemptIdx current attempt index
-     */
-    private void setAndRecord(int bx, int by, int bz, byte newState, int attemptIdx) {
-        if (bx < 0 || bx >= BUFFER_XZ || by < 0 || by >= BUFFER_Y || bz < 0 || bz >= BUFFER_XZ) return;
-        int idx = bx * BUFFER_XZ * BUFFER_Y + by * BUFFER_XZ + bz;
-        byte old = buffer[idx];
-        if (old != newState) {
-            buffer[idx] = newState;
-            changedAll.get(attemptIdx).add(new int[]{idx, old});
-        }
-    }
-
-    /** Undo all block changes for the specified attempt */
-    private void undoChanges(int attemptIdx) {
-        List<int[]> changes = changedAll.get(attemptIdx);
-        for (int i = changes.size() - 1; i >= 0; i--) {
-            int[] c = changes.get(i);
-            buffer[c[0]] = (byte) c[1];
-        }
-        changes.clear();
-    }
-
-    /** Record a chest block change (separate list for per-iteration undo) */
-    private void setAndRecordChest(int bx, int by, int bz, byte newState, int attemptIdx) {
-        if (bx < 0 || bx >= BUFFER_XZ || by < 0 || by >= BUFFER_Y || bz < 0 || bz >= BUFFER_XZ) return;
-        int idx = bx * BUFFER_XZ * BUFFER_Y + by * BUFFER_XZ + bz;
-        byte old = buffer[idx];
-        if (old != newState) {
-            buffer[idx] = newState;
-            changedChestsAll.get(attemptIdx).add(new int[]{idx, old});
-        }
-    }
-
-    /** Undo chest changes for the specified attempt */
-    private void undoChests(int attemptIdx) {
-        List<int[]> changes = changedChestsAll.get(attemptIdx);
-        for (int i = changes.size() - 1; i >= 0; i--) {
-            int[] c = changes.get(i);
-            buffer[c[0]] = (byte) c[1];
-        }
-        changes.clear();
-    }
-
-    /** In buffer coords, chunk-local range is [4, 19] (world coords chunkBlockX+0 to chunkBlockX+15) */
-    private int worldToBufferX(int worldX) { return worldX - chunkBlockX + 4; }
-    private int worldToBufferY(int worldY) { return worldY - WORLD_MIN_Y; }
-    private int worldToBufferZ(int worldZ) { return worldZ - chunkBlockZ + 4; }
-
-    private int bufferToWorldX(int bx) { return bx + chunkBlockX - 4; }
-    private int bufferToWorldY(int by) { return by + WORLD_MIN_Y; }
-    private int bufferToWorldZ(int bz) { return bz + chunkBlockZ - 4; }
 
     public List<SpawnerCombination> runForChunk(
             int chunkX, int chunkZ, long worldSeed,
@@ -165,39 +81,32 @@ public class DungeonFinder {
         this.chunkBlockZ = chunkZ * 16;
         this.results.clear();
 
-        // Fill the full 24x24 buffer area
         fillBuffer(blockReader);
+        this.featureSim = new FeatureSimulator(buffer, chunkBlockX, chunkBlockZ);
 
         WorldgenRandom random = new WorldgenRandom(0L);
         long decorationSeed = random.setDecorationSeed(worldSeed, chunkBlockX, chunkBlockZ);
 
-        DungeonAttempt[] normalAttempts = simulatePlacement(
-                random, decorationSeed, featureIndexNormal, STEP_ORDINAL,
-                NORMAL_ATTEMPTS, NORMAL_Y_MIN, NORMAL_Y_MAX, false);
+        // Compute RNG seeds for normal and deep features
+        random.setFeatureSeed(decorationSeed, featureIndexNormal, STEP_ORDINAL);
+        long normalRngLo = random.getSeedLo();
+        long normalRngHi = random.getSeedHi();
 
-        DungeonAttempt[] deepAttempts = null;
-        if (featureIndexDeep >= 0) {
-            deepAttempts = simulatePlacement(
-                    random, decorationSeed, featureIndexDeep, STEP_ORDINAL,
-                    DEEP_ATTEMPTS, DEEP_Y_MIN, DEEP_Y_MAX, true);
+        long deepRngLo = 0, deepRngHi = 0;
+        boolean hasDeep = featureIndexDeep >= 0;
+        if (hasDeep) {
+            random.setFeatureSeed(decorationSeed, featureIndexDeep, STEP_ORDINAL);
+            deepRngLo = random.getSeedLo();
+            deepRngHi = random.getSeedHi();
         }
 
-        List<DungeonAttempt> allAttempts = new ArrayList<>();
-        for (DungeonAttempt a : normalAttempts) allAttempts.add(a);
-        if (deepAttempts != null) {
-            for (DungeonAttempt a : deepAttempts) allAttempts.add(a);
-        }
-
-        // Initialize change records for each attempt
-        changedAll = new ArrayList<>();
-        changedChestsAll = new ArrayList<>();
-        for (int i = 0; i < allAttempts.size(); i++) {
-            changedAll.add(new ArrayList<>());
-            changedChestsAll.add(new ArrayList<>());
-        }
-
+        // Search: Normal attempts first, then Deep attempts for each Normal result.
+        // Normal and Deep have independent RNG (separate setFeatureSeed).
         SpawnerCombination current = new SpawnerCombination();
-        recursiveSearch(allAttempts, 0, current);
+        recursiveSearchNormal(normalRngLo, normalRngHi,
+                0, NORMAL_ATTEMPTS, NORMAL_Y_MIN, NORMAL_Y_MAX,
+                hasDeep, deepRngLo, deepRngHi,
+                current);
 
         Collections.sort(results);
         if (results.size() > MAX_RESULTS) {
@@ -206,64 +115,103 @@ public class DungeonFinder {
         return results;
     }
 
-    private DungeonAttempt[] simulatePlacement(
-            WorldgenRandom random, long decorationSeed,
-            int featureIndex, int stepOrdinal,
-            int attempts, int yMin, int yMax, boolean isDeep) {
-
-        random.setFeatureSeed(decorationSeed, featureIndex, stepOrdinal);
-
-        int yRange = yMax - yMin + 1;
-        DungeonAttempt[] result = new DungeonAttempt[attempts];
-
-        for (int i = 0; i < attempts; i++) {
-            int placementX = random.nextInt(16);
-            int placementZ = random.nextInt(16);
-            int placementY = random.nextInt(yRange) + yMin;
-
-            int originX = chunkBlockX + placementX;
-            int originY = placementY;
-            int originZ = chunkBlockZ + placementZ;
-
-            int sizeX = random.nextInt(2) + 2;
-            int sizeZ = random.nextInt(2) + 2;
-
-            result[i] = new DungeonAttempt(
-                    originX, originY, originZ, sizeX, sizeZ,
-                    placementX, placementZ,
-                    isDeep, i, random.getSeedLo(), random.getSeedHi());
-
-            // No extra RNG consumed — assumes all attempts fail (matches original mod)
-            // Successful RNG consumption handled in simulateDungeonPlace
+    /**
+     * Recursive search for normal dungeon attempts.
+     * After exhausting all normal attempts, continues to deep attempts.
+     */
+    private void recursiveSearchNormal(long rngLo, long rngHi,
+                                       int attemptIndex, int totalAttempts,
+                                       int yMin, int yMax,
+                                       boolean hasDeep, long deepRngLo, long deepRngHi,
+                                       SpawnerCombination current) {
+        if (attemptIndex >= totalAttempts) {
+            // Normal attempts exhausted — continue with deep attempts
+            if (hasDeep) {
+                recursiveSearchDeep(deepRngLo, deepRngHi,
+                        0, DEEP_ATTEMPTS, DEEP_Y_MIN, DEEP_Y_MAX, current);
+            } else {
+                // No deep — save result
+                if (current.spawnerCount > 0) {
+                    int minPoints = results.size() >= MAX_RESULTS ?
+                            results.get(results.size() - 1).points : 0;
+                    if (current.countPoints(minPoints, searchType, preferredType)) {
+                        addResult(current.copy());
+                    }
+                }
+            }
+            return;
         }
 
-        return result;
-    }
+        // Compute this attempt's placement from current RNG state
+        WorldgenRandom rng = new WorldgenRandom(new XoroshiroRandomSource(rngLo, rngHi));
+        int placementX = rng.nextInt(16);
+        int placementZ = rng.nextInt(16);
+        int yRange = yMax - yMin + 1;
+        int placementY = rng.nextInt(yRange) + yMin;
 
-    private void simulateFeatureRNG(WorldgenRandom random,
-                                    int originX, int originY, int originZ, int sizeX, int sizeZ) {
-        // Empty impl — assumes all attempts fail, no extra RNG consumed
+        int originX = chunkBlockX + placementX;
+        int originY = placementY;
+        int originZ = chunkBlockZ + placementZ;
+
+        // feature.place() — consumes sizeX, sizeZ, and (if passes) shell+chest+spawner RNG
+        FeatureSimulator.PlaceResult result = featureSim.simulate(
+                rng, originX, originY, originZ, false, attemptIndex);
+
+        long nextLo = rng.getSeedLo();
+        long nextHi = rng.getSeedHi();
+
+        if (!result.passed()) {
+            // Check failed — move to next attempt with post-fail RNG state
+            recursiveSearchNormal(nextLo, nextHi, attemptIndex + 1, totalAttempts,
+                    yMin, yMax, hasDeep, deepRngLo, deepRngHi, current);
+            return;
+        }
+
+        // Compute skip-RNG: state after InSquare + HeightRange + sizeX + sizeZ only
+        WorldgenRandom skipRng = new WorldgenRandom(new XoroshiroRandomSource(rngLo, rngHi));
+        skipRng.nextInt(16); skipRng.nextInt(16); skipRng.nextInt(yRange);
+        skipRng.nextInt(2); skipRng.nextInt(2);
+        long skipLo = skipRng.getSeedLo();
+        long skipHi = skipRng.getSeedHi();
+
+        // Branch 1: skip this dungeon
+        featureSim.undoAll();
+        recursiveSearchNormal(skipLo, skipHi, attemptIndex + 1, totalAttempts,
+                yMin, yMax, hasDeep, deepRngLo, deepRngHi, current);
+
+        // Branch 2: keep this dungeon
+        rng = new WorldgenRandom(new XoroshiroRandomSource(rngLo, rngHi));
+        rng.nextInt(16); rng.nextInt(16); rng.nextInt(yRange);
+        result = featureSim.simulate(rng, originX, originY, originZ, false, attemptIndex);
+        nextLo = rng.getSeedLo();
+        nextHi = rng.getSeedHi();
+
+        if (result.passed()) {
+            Spawner spawner = result.spawner;
+            boolean isLastNormal = (attemptIndex == totalAttempts - 1) && !hasDeep;
+            if (!isLastNormal || !searchType.hasType || spawner.type == preferredType) {
+                current.spawners[current.spawnerCount] = spawner;
+                current.spawnerCount++;
+                recursiveSearchNormal(nextLo, nextHi, attemptIndex + 1, totalAttempts,
+                        yMin, yMax, hasDeep, deepRngLo, deepRngHi, current);
+                current.spawnerCount--;
+            }
+            featureSim.undoAll();
+        }
     }
 
     /**
-     * Recursive search for optimal block layout.
-     * For each dungeon attempt, checks block state within chunk (clamped to 0-15):
-     * - Floor/ceiling must be all SOLID within chunk
-     * - Wall exit count within chunk <= 5
-     * - exitCount >= 1 or floorBlocksNeeded != 0 (cross-chunk dungeon)
-     * If passed, simulates full MonsterRoomFeature.place(),
-     * sets blocks in buffer (interior AIR, floor SOLID, chest, spawner),
-     * then recurses to next attempt.
+     * Recursive search for deep dungeon attempts.
+     * Called after normal attempts are exhausted.
      */
-    private void recursiveSearch(List<DungeonAttempt> attempts, int index,
-                                 SpawnerCombination current) {
-        if (index >= attempts.size()) {
+    private void recursiveSearchDeep(long rngLo, long rngHi,
+                                     int attemptIndex, int totalAttempts,
+                                     int yMin, int yMax,
+                                     SpawnerCombination current) {
+        if (attemptIndex >= totalAttempts) {
             if (current.spawnerCount > 0) {
-                // #4: minPoints filter
-                int minPoints = 0;
-                if (results.size() >= MAX_RESULTS) {
-                    minPoints = results.get(results.size() - 1).points;
-                }
+                int minPoints = results.size() >= MAX_RESULTS ?
+                        results.get(results.size() - 1).points : 0;
                 if (current.countPoints(minPoints, searchType, preferredType)) {
                     addResult(current.copy());
                 }
@@ -271,303 +219,59 @@ public class DungeonFinder {
             return;
         }
 
-        DungeonAttempt attempt = attempts.get(index);
-        DungeonCheckResult check = checkDungeonConditions(attempt);
-
-        if (index < 14 && check.pass) {
-            DungeonForcerMod.LOGGER.info("[DF] PASS [{}] lx={} y={} lz={} sz=({},{}) exits={} floor={} maxFloor={}",
-                    index, attempt.localX, attempt.originY, attempt.localZ,
-                    attempt.sizeX, attempt.sizeZ, check.exitCount, check.floorBlocksNeeded,
-                    check.floorBlocksNeeded);
-        }
-
-        if (!check.pass) {
-            recursiveSearch(attempts, index + 1, current);
-            return;
-        }
-
-        // Branch 1: skip this dungeon
-        recursiveSearch(attempts, index + 1, current);
-
-        // Branch 2: place this dungeon
-        // Phase 1: simulate shell (walls/floor/interior) — done once, records RNG state after
-        long[] rngAfterShell = new long[2];
-        boolean shellOk = simulateShell(attempt, index, rngAfterShell);
-        if (!shellOk) {
-            undoChanges(index);
-            return;
-        }
-
-        // Phase 2: iterate floorBlocksNeeded — each iteration uses different RNG offset
-        // producing different chest layouts and spawner types
-        // Cap iterations to prevent search explosion (original mod had max ~15 in 1.17)
-        int maxFloor = Math.min(check.floorBlocksNeeded, 15);
-        long iterLo = rngAfterShell[0], iterHi = rngAfterShell[1];
-
-        for (int floorIter = 0; floorIter <= maxFloor; floorIter++) {
-            // Chest + spawner placement with current RNG state
-            Spawner spawner = simulateChestsAndSpawner(attempt, check, index, iterLo, iterHi, floorIter);
-
-            // #5: last-attempt type filter
-            boolean isLastAttempt = (index == attempts.size() - 1);
-            if (isLastAttempt && searchType.hasType && spawner.type != preferredType) {
-                undoChests(index);
-                // Advance RNG: consume nextInt(4) for next iteration
-                WorldgenRandom advRng = new WorldgenRandom(new XoroshiroRandomSource(iterLo, iterHi));
-                advRng.nextInt(4);
-                iterLo = advRng.getSeedLo();
-                iterHi = advRng.getSeedHi();
-                continue;
-            }
-
-            current.spawners[current.spawnerCount] = spawner;
-            current.spawnerCount++;
-            recursiveSearch(attempts, index + 1, current);
-            current.spawnerCount--;
-
-            undoChests(index);
-
-            // Advance RNG: consume nextInt(4) for next iteration
-            WorldgenRandom advRng = new WorldgenRandom(new XoroshiroRandomSource(iterLo, iterHi));
-            advRng.nextInt(4);
-            iterLo = advRng.getSeedLo();
-            iterHi = advRng.getSeedHi();
-        }
-
-        undoChanges(index);
-    }
-
-    /**
-     * Check dungeon generation conditions, matching original mod logic.
-     * Key: clamp dungeon bounds to chunk (localX 0-15, localZ 0-15).
-     * Only checks blocks inside chunk; blocks outside are player-placed.
-     * Pass condition:
-     *   allSolid (floor/ceiling all solid within chunk)
-     *   && exitCount <= 5
-     *   && (exitCount >= 1 || floorBlocksNeeded != 0)
-     * floorBlocksNeeded = total floor area - chunk overlap area
-     *   = number of floor blocks player needs to place outside chunk
-     */
-    private DungeonCheckResult checkDungeonConditions(DungeonAttempt attempt) {
-        // localX/Z = origin offset within chunk (0-15)
-        int lx = attempt.localX;
-        int lz = attempt.localZ;
-        int oy = attempt.originY;
-        int sizeX = attempt.sizeX;
-        int sizeZ = attempt.sizeZ;
-
-        int sizeX1 = sizeX + 1;
-        int sizeZ1 = sizeZ + 1;
-
-        // Full dungeon bounds (relative to origin)
-        int fullMinX = -sizeX1;
-        int fullMaxX = sizeX1;
-        int fullMinZ = -sizeZ1;
-        int fullMaxZ = sizeZ1;
-
-        // Clamp to chunk bounds (0-15)
-        int clampMinX = Math.max(0, lx + fullMinX);
-        int clampMaxX = Math.min(15, lx + fullMaxX);
-        int clampMinZ = Math.max(0, lz + fullMinZ);
-        int clampMaxZ = Math.min(15, lz + fullMaxZ);
-
-        // Total floor area vs chunk-internal area
-        int totalFloor = (fullMaxX - fullMinX + 1) * (fullMaxZ - fullMinZ + 1);
-        int chunkFloor = (clampMaxX - clampMinX + 1) * (clampMaxZ - clampMinZ + 1);
-        int floorBlocksNeeded = totalFloor - chunkFloor;
-
-        // Special case: y==1 means floor is bedrock, no extra blocks needed
-        if (oy == 1) floorBlocksNeeded = 0;
-
-        // Check if floor/ceiling are all solid within chunk
-        boolean allSolid = true;
-        outer:
-        for (int wx = clampMinX; wx <= clampMaxX; wx++) {
-            for (int wz = clampMinZ; wz <= clampMaxZ; wz++) {
-                int bx = wx + 4; // buffer offset: chunk local 0 → buffer 4
-                int bz = wz + 4;
-                // Floor dy=-1
-                byte floor = getBlock(bx, worldToBufferY(oy - 1), bz);
-                if ((floor & SOLID) == 0) { allSolid = false; break outer; }
-                // Ceiling dy=4
-                byte ceil = getBlock(bx, worldToBufferY(oy + 4), bz);
-                if ((ceil & SOLID) == 0) { allSolid = false; break outer; }
-            }
-        }
-
-        if (!allSolid) {
-            return DungeonCheckResult.fail();
-        }
-
-        // Count wall exits within chunk
-        int exitCount = 0;
-        for (int wx = lx + fullMinX; wx <= lx + fullMaxX; wx++) {
-            for (int wz = lz + fullMinZ; wz <= lz + fullMaxZ; wz++) {
-                // Only count perimeter positions
-                boolean isWall = (wx == lx + fullMinX || wx == lx + fullMaxX
-                        || wz == lz + fullMinZ || wz == lz + fullMaxZ);
-                if (!isWall) continue;
-                // Only count positions inside chunk
-                if (wx < 0 || wx > 15 || wz < 0 || wz > 15) continue;
-
-                int bx = wx + 4;
-                int bz = wz + 4;
-                int by0 = worldToBufferY(oy);
-                int by1 = worldToBufferY(oy + 1);
-                byte b0 = getBlock(bx, by0, bz);
-                byte b1 = getBlock(bx, by1, bz);
-                if (b0 == AIR && b1 == AIR) {
-                    exitCount++;
-                    if (exitCount > 5) return DungeonCheckResult.fail();
-                }
-            }
-        }
-
-        boolean pass = exitCount <= 5 && (exitCount >= 1 || floorBlocksNeeded != 0);
-        if (!pass) return DungeonCheckResult.fail();
-
-        // exitsNeeded = 5 - exitCount (matches original mod line 1118-1122)
-        int exitsNeeded = 5 - exitCount;
-        return new DungeonCheckResult(true, exitsNeeded, floorBlocksNeeded);
-    }
-
-    /**
-     * Phase 1: Simulate shell placement (walls/floor/ceiling/interior).
-     * Done once per attempt. Records RNG state after shell into rngOut[0]=lo, rngOut[1]=hi.
-     * Returns true if successful.
-     */
-    private boolean simulateShell(DungeonAttempt attempt, int attemptIdx, long[] rngOut) {
-        int lx = attempt.localX;
-        int lz = attempt.localZ;
-        int oy = attempt.originY;
-        int sizeX = attempt.sizeX;
-        int sizeZ = attempt.sizeZ;
-        int sizeX1 = sizeX + 1;
-        int sizeZ1 = sizeZ + 1;
-
-        WorldgenRandom rng = new WorldgenRandom(
-                new XoroshiroRandomSource(attempt.rngSeedLo, attempt.rngSeedHi));
-
-        // 26.1 loop order: dx -> dy(3 downto -1) -> dz
-        for (int dx = -sizeX1; dx <= sizeX1; dx++) {
-            for (int dy = 3; dy >= -1; dy--) {
-                for (int dz = -sizeZ1; dz <= sizeZ1; dz++) {
-                    int wx = lx + dx;
-                    int wz = lz + dz;
-                    int bx = wx + 4;
-                    int by = worldToBufferY(oy + dy);
-                    int bz = wz + 4;
-
-                    boolean isShell = (dx == -sizeX1 || dy == -1 || dz == -sizeZ1
-                            || dx == sizeX1 || dy == 4 || dz == sizeZ1);
-
-                    if (isShell) {
-                        if (wx >= 0 && wx <= 15 && wz >= 0 && wz <= 15) {
-                            if (by >= 0) {
-                                byte below = getBlock(bx, by - 1, bz);
-                                if ((below & SOLID) == 0) {
-                                    setAndRecord(bx, by, bz, AIR, attemptIdx);
-                                } else {
-                                    byte cur = getBlock(bx, by, bz);
-                                    if ((cur & SOLID) != 0 && (cur & CHEST) == 0) {
-                                        if (dy == -1) {
-                                            rng.nextInt(4); // mossy cobblestone RNG
-                                        }
-                                        setAndRecord(bx, by, bz, SOLID, attemptIdx);
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        if (wx >= 0 && wx <= 15 && wz >= 0 && wz <= 15) {
-                            byte cur = getBlock(bx, by, bz);
-                            if ((cur & CHEST) == 0 && (cur & SPAWNER) == 0) {
-                                setAndRecord(bx, by, bz, AIR, attemptIdx);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        rngOut[0] = rng.getSeedLo();
-        rngOut[1] = rng.getSeedHi();
-        return true;
-    }
-
-    /**
-     * Phase 2: Simulate chest placement + determine spawner type.
-     * Called per floorBlocksNeeded iteration with different RNG state.
-     * Chest changes are recorded in changedChestsAll (separate from shell).
-     */
-    private Spawner simulateChestsAndSpawner(DungeonAttempt attempt, DungeonCheckResult check,
-                                              int attemptIdx, long rngLo, long rngHi, int floorIter) {
-        int lx = attempt.localX;
-        int lz = attempt.localZ;
-        int oy = attempt.originY;
-        int sizeX = attempt.sizeX;
-        int sizeZ = attempt.sizeZ;
-        int sizeX1 = sizeX + 1;
-        int sizeZ1 = sizeZ + 1;
-
         WorldgenRandom rng = new WorldgenRandom(new XoroshiroRandomSource(rngLo, rngHi));
+        int placementX = rng.nextInt(16);
+        int placementZ = rng.nextInt(16);
+        int yRange = yMax - yMin + 1;
+        int placementY = rng.nextInt(yRange) + yMin;
 
-        Spawner spawner = new Spawner(
-                attempt.originX, oy, attempt.originZ,
-                sizeX, sizeZ, SpawnerType.ZOMBIE,
-                check.exitCount, floorIter,
-                attempt.isDeep, attempt.attemptIndex);
+        int originX = chunkBlockX + placementX;
+        int originY = placementY;
+        int originZ = chunkBlockZ + placementZ;
 
-        // Render: outside-chunk floor/ceiling blocks
-        for (int dx = -sizeX1; dx <= sizeX1; dx++) {
-            for (int dz = -sizeZ1; dz <= sizeZ1; dz++) {
-                int wx = lx + dx;
-                int wz = lz + dz;
-                if (wx >= 0 && wx <= 15 && wz >= 0 && wz <= 15) continue;
-                for (int dy : new int[]{-1, 4}) {
-                    int bx = wx + 4;
-                    int by = worldToBufferY(oy + dy);
-                    int bz = wz + 4;
-                    spawner.blockModifications.add(new int[]{
-                            bufferToWorldX(bx), bufferToWorldY(by), bufferToWorldZ(bz),
-                            Spawner.ACTION_PLACE});
-                }
-            }
+        FeatureSimulator.PlaceResult result = featureSim.simulate(
+                rng, originX, originY, originZ, true, attemptIndex);
+
+        long nextLo = rng.getSeedLo();
+        long nextHi = rng.getSeedHi();
+
+        if (!result.passed()) {
+            recursiveSearchDeep(nextLo, nextHi, attemptIndex + 1, totalAttempts,
+                    yMin, yMax, current);
+            return;
         }
 
-        // Chest placement
-        for (int cc = 0; cc < 2; cc++) {
-            for (int i = 0; i < 3; i++) {
-                int cx = lx + rng.nextInt(sizeX * 2 + 1) - sizeX;
-                int cz = lz + rng.nextInt(sizeZ * 2 + 1) - sizeZ;
-                int cbx = cx + 4;
-                int cby = worldToBufferY(oy);
-                int cbz = cz + 4;
-                if (cx >= 0 && cx <= 15 && cz >= 0 && cz <= 15) {
-                    if (getBlock(cbx, cby, cbz) == AIR) {
-                        int wallCount = 0;
-                        if ((getBlock(cbx + 1, cby, cbz) & SOLID) != 0) wallCount++;
-                        if ((getBlock(cbx - 1, cby, cbz) & SOLID) != 0) wallCount++;
-                        if ((getBlock(cbx, cby, cbz + 1) & SOLID) != 0) wallCount++;
-                        if ((getBlock(cbx, cby, cbz - 1) & SOLID) != 0) wallCount++;
-                        if (wallCount == 1) {
-                            setAndRecordChest(cbx, cby, cbz, BLOCK_CHEST, attemptIdx);
-                            rng.nextLong(); // loot table RNG
-                            break;
-                        }
-                    }
-                }
+        // Skip-RNG
+        WorldgenRandom skipRng = new WorldgenRandom(new XoroshiroRandomSource(rngLo, rngHi));
+        skipRng.nextInt(16); skipRng.nextInt(16); skipRng.nextInt(yRange);
+        skipRng.nextInt(2); skipRng.nextInt(2);
+        long skipLo = skipRng.getSeedLo();
+        long skipHi = skipRng.getSeedHi();
+
+        // Branch 1: skip
+        featureSim.undoAll();
+        recursiveSearchDeep(skipLo, skipHi, attemptIndex + 1, totalAttempts,
+                yMin, yMax, current);
+
+        // Branch 2: keep
+        rng = new WorldgenRandom(new XoroshiroRandomSource(rngLo, rngHi));
+        rng.nextInt(16); rng.nextInt(16); rng.nextInt(yRange);
+        result = featureSim.simulate(rng, originX, originY, originZ, true, attemptIndex);
+        nextLo = rng.getSeedLo();
+        nextHi = rng.getSeedHi();
+
+        if (result.passed()) {
+            Spawner spawner = result.spawner;
+            boolean isLast = (attemptIndex == totalAttempts - 1);
+            if (!isLast || !searchType.hasType || spawner.type == preferredType) {
+                current.spawners[current.spawnerCount] = spawner;
+                current.spawnerCount++;
+                recursiveSearchDeep(nextLo, nextHi, attemptIndex + 1, totalAttempts,
+                        yMin, yMax, current);
+                current.spawnerCount--;
             }
+            featureSim.undoAll();
         }
-
-        // Determine spawner type
-        int mobIndex = rng.nextInt(4);
-        spawner.type = SpawnerType.fromMobIndex(mobIndex);
-
-        // Place spawner
-        setAndRecordChest(lx + 4, worldToBufferY(oy), lz + 4, BLOCK_SPAWNER, attemptIdx);
-
-        return spawner;
     }
 
     private void addResult(SpawnerCombination combo) {
@@ -593,6 +297,7 @@ public class DungeonFinder {
         }
     }
 
+    // Used by GoodChunkFinder
     public static class DungeonAttempt {
         public final int originX, originY, originZ;
         /** Origin's chunk-local coordinate (0-15) */
@@ -618,22 +323,6 @@ public class DungeonFinder {
             this.attemptIndex = attemptIndex;
             this.rngSeedLo = rngSeedLo;
             this.rngSeedHi = rngSeedHi;
-        }
-    }
-
-    private static class DungeonCheckResult {
-        final boolean pass;
-        final int exitCount;
-        final int floorBlocksNeeded;
-
-        DungeonCheckResult(boolean pass, int exitCount, int floorBlocksNeeded) {
-            this.pass = pass;
-            this.exitCount = exitCount;
-            this.floorBlocksNeeded = floorBlocksNeeded;
-        }
-
-        static DungeonCheckResult fail() {
-            return new DungeonCheckResult(false, 0, 0);
         }
     }
 
