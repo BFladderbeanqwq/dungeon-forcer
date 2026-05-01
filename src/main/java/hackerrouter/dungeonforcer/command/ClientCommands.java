@@ -80,8 +80,8 @@ public class ClientCommands {
         int normalIndex = FeatureIndexHelper.getNormalFeatureIndex();
         int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
 
-        Chat.send("[DungeonForcer] Searching chunk (" + chunkPos.x() + ", " + chunkPos.z() + ")...");
-        Chat.send("featureIndex: normal=" + normalIndex + ", deep=" + deepIndex);
+        Chat.send("§6[DungeonForcer] §fSearching chunk (" + chunkPos.x() + ", " + chunkPos.z() + ")...");
+        Chat.send("§7featureIndex: normal=" + normalIndex + ", deep=" + deepIndex);
 
         DungeonFinder finder = new DungeonFinder();
         currentResults = finder.runForChunk(
@@ -92,8 +92,17 @@ public class ClientCommands {
 
         currentResultIndex = 0;
 
+        if (searchType.hasType && preferredType != null) {
+            currentResults.removeIf(combo -> {
+                for (int i = 0; i < combo.spawnerCount; i++) {
+                    if (combo.spawners[i].type == preferredType) return false;
+                }
+                return true;
+            });
+        }
+
         if (currentResults.isEmpty()) {
-            Chat.send("[DungeonForcer] No Combinations Found.");
+            Chat.send("§c[DungeonForcer] §fNo Combinations Found.");
         } else {
             showCurrentResult();
         }
@@ -103,7 +112,7 @@ public class ClientCommands {
 
     private static int nextResult(FabricClientCommandSource source) {
         if (currentResults == null || currentResults.isEmpty()) {
-            Chat.send("[DungeonForcer] No search result. Try /dungeonforcer run first.");
+            Chat.send("§c[DungeonForcer] §fNo search result. Try /dungeonforcer run first.");
             return 0;
         }
         currentResultIndex = (currentResultIndex + 1) % currentResults.size();
@@ -113,17 +122,17 @@ public class ClientCommands {
 
     private static void showCurrentResult() {
         SpawnerCombination combo = currentResults.get(currentResultIndex);
-        Chat.send(String.format("[DungeonForcer] Result %d/%d (score: %d, spawners: %d)",
+        Chat.send(String.format("§6[DungeonForcer] §fResult %d/%d (score: %d, spawners: %d)",
                 currentResultIndex + 1, currentResults.size(),
                 combo.points, combo.spawnerCount));
 
         for (int i = 0; i < combo.spawnerCount; i++) {
             Spawner s = combo.spawners[i];
             String color = getSpawnerColor(s.type);
-            Chat.send(String.format("  %s%s @ (%d, %d, %d) size=%dx%d exits=%d floor=%d%s",
+            Chat.send(String.format("  %s%s §f@ (%d, %d, %d) size=%dx%d exits=%d floor=%d%s",
                     color, s.type.name(), s.x, s.y, s.z,
                     s.sizeX, s.sizeZ, s.exitsNeeded, s.floorBlocksNeeded,
-                    s.isDeep ? " [DEEP]" : ""));
+                    s.isDeep ? " §8[DEEP]" : ""));
         }
 
         RenderQueue.clear();
@@ -136,14 +145,14 @@ public class ClientCommands {
         currentResults = null;
         currentResultIndex = 0;
         RenderQueue.clear();
-        Chat.send("[DungeonForcer] Successfully reset.");
+        Chat.send("§6[DungeonForcer] §fSuccessfully reset.");
         return 1;
     }
 
     private static int setSeed(FabricClientCommandSource source, long seed) {
         worldSeed = seed;
         seedOverride = true;
-        Chat.send("[DungeonForcer] Successfully set the seed to " + seed);
+        Chat.send("§6[DungeonForcer] §fSuccessfully set the seed to " + seed);
         return 1;
     }
 
@@ -151,11 +160,11 @@ public class ClientCommands {
         try {
             int normalIndex = FeatureIndexHelper.getNormalFeatureIndex();
             int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
-            Chat.send("[DungeonForcer] featureIndex:");
-            Chat.send("  MONSTER_ROOM: " + normalIndex);
-            Chat.send("  MONSTER_ROOM_DEEP: " + deepIndex);
+            Chat.send("§6[DungeonForcer] §ffeatureIndex:");
+            Chat.send("  §7MONSTER_ROOM: " + normalIndex);
+            Chat.send("  §7MONSTER_ROOM_DEEP: " + deepIndex);
         } catch (Exception e) {
-            Chat.send("[DungeonForcer] Unable to obtain featureIndex: " + e.getMessage());
+            Chat.send("§c[DungeonForcer] §fUnable to obtain featureIndex: " + e.getMessage());
         }
         return 1;
     }
@@ -169,18 +178,18 @@ public class ClientCommands {
         int normalIndex = FeatureIndexHelper.getNormalFeatureIndex();
         int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
 
-        Chat.send("[DungeonForcer] Scanning " + ((2*radius+1)*(2*radius+1)) + " chunks...");
+        Chat.send("§6[DungeonForcer] §fScanning " + ((2*radius+1)*(2*radius+1)) + " chunks...");
 
         List<GoodChunkFinder.ChunkResult> results = GoodChunkFinder.findGoodChunks(
                 chunkPos.x(), chunkPos.z(), radius, seed, normalIndex, deepIndex, 20);
 
         if (results.isEmpty()) {
-            Chat.send("[DungeonForcer] No good chunk found yet.");
+            Chat.send("§c[DungeonForcer] §fNo good chunk found yet.");
         } else {
-            Chat.send("[DungeonForcer] Found " + results.size() + " good chunks:");
-            for (int i = 0; i < Math.min(10, results.size()); i++) {
+            Chat.send("§6[DungeonForcer] §fFound " + results.size() + " good chunks:");
+            for (int i = 0; i < results.size(); i++) {
                 GoodChunkFinder.ChunkResult r = results.get(i);
-                Chat.send(String.format("  %d. (%d, %d) rate=%.0f potential=%d",
+                Chat.send(String.format("  §e%d. §f(%d, %d) rate=%.0f potential=%d",
                         i + 1, r.chunkX, r.chunkZ, r.score, r.potentialSpawners));
                 RenderQueue.addChunkCross(r.chunkX, r.chunkZ);
             }
@@ -190,16 +199,16 @@ public class ClientCommands {
 
     private static int resetGoodChunkFinder(FabricClientCommandSource source) {
         RenderQueue.clearChunkCrosses();
-        Chat.send("[DungeonForcer] Cleared the good chunk mark.");
+        Chat.send("§6[DungeonForcer] §fCleared the good chunk mark.");
         return 1;
     }
 
     private static String getSpawnerColor(SpawnerType type) {
         switch (type) {
-            case SKELETON: return "\u00A7b";
-            case ZOMBIE: return "\u00A7a";
-            case SPIDER: return "\u00A7c";
-            default: return "\u00A7f";
+            case SKELETON: return "§b";
+            case ZOMBIE: return "§a";
+            case SPIDER: return "§c";
+            default: return "§f";
         }
     }
 }
