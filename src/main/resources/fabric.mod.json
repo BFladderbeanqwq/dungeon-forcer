@@ -5,18 +5,20 @@
 	"name": "Dungeon Forcer",
 	"description": "dungeonforcer for 26.1.1, basic concept is from andrew_10_",
 	"authors": [
-		"HackerRouter"
+		"HackerRouter",
+		"andrew_10_"
 	],
 	"contact": {
 		"sources": "https://github.com/HackerRouter/dungeon-forcer"
 	},
 	"icon": "assets/dungeonforcer/icon.png",
-	"environment": "*",
+	"environment": "client",
 	"entrypoints": {
-		"main": [
+		"client": [
 			"hackerrouter.dungeonforcer.DungeonForcerMod"
 		]
 	},
+	"license": "MIT",
 	"mixins": [
 		"dungeonforcer.mixins.json"
 	],

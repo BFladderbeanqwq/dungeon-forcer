@@ -4,10 +4,8 @@
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [],
 	"client": [
-		"ClientPlayerEntityMixin",
-		"ClientPlayNetworkHandlerMixin",
-		"GameRendererMixin",
-		"MinecraftClientMixin"
+		"ChunkGeneratorAccessor",
+		"ClientPlayNetworkHandlerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
