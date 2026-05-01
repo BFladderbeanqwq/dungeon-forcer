@@ -25,7 +25,7 @@ public class GoodChunkFinder {
 
         @Override
         public int compareTo(ChunkResult other) {
-            return Double.compare(other.score, this.score); // descending
+            return Double.compare(other.score, this.score);
         }
 
         @Override
@@ -76,7 +76,7 @@ public class GoodChunkFinder {
         for (int i = 0; i < DungeonFinder.NORMAL_ATTEMPTS; i++) {
             int px = random.nextInt(16);
             int pz = random.nextInt(16);
-            int py = random.nextInt(320); // [0, 319]
+            int py = random.nextInt(320);
             int sx = random.nextInt(2) + 2;
             int sz = random.nextInt(2) + 2;
 
@@ -85,7 +85,6 @@ public class GoodChunkFinder {
                     sx, sz, px, pz, false, i, 0, 0);
             normalAttempts.add(attempt);
 
-                // Cross-chunk dungeons can be manipulated by player (high value)
             boolean crossChunk = px < sx + 1 || px > 15 - (sx + 1)
                     || pz < sz + 1 || pz > 15 - (sz + 1);
 
@@ -115,7 +114,6 @@ public class GoodChunkFinder {
                         sx, sz, px, pz, true, i, 0, 0);
                 normalAttempts.add(attempt);
 
-                // Deep dungeons Y range [-58, -1], all within stone layer
                 score += 8;
                 potentialSpawners++;
             }

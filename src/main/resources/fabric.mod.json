@@ -3,12 +3,14 @@
 	"id": "dungeonforcer",
 	"version": "${version}",
 	"name": "Dungeon Forcer",
-	"description": "dungeonforcer for 26.1.1, basic concept is from andrew_10_",
+	"description": "Dungeonforcer for 26.1.1.\nThe basic concept is from andrew_10_",
 	"authors": [
 		"HackerRouter",
 		"andrew_10_"
 	],
 	"contact": {
+		"homepage": "https://github.com/HackerRouter/dungeon-forcer",
+		"issues": "https://github.com/HackerRouter/dungeon-forcer/issues",
 		"sources": "https://github.com/HackerRouter/dungeon-forcer"
 	},
 	"icon": "assets/dungeonforcer/icon.png",

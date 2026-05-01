@@ -66,7 +66,6 @@ public class SpawnerCombination implements Comparable<SpawnerCombination> {
         return dx * dx + dy * dy + dz * dz;
     }
 
-    // Find the spawner with the most neighbors within 32 blocks (dSq < 1024)
     private Spawner findDensestCenter(SpawnerType typeFilter) {
         Spawner best = null;
         int bestCount = 0;
@@ -83,8 +82,6 @@ public class SpawnerCombination implements Comparable<SpawnerCombination> {
         return best;
     }
 
-    // Scan box around center: x 4..12, z 4..12, y center.y-16..center.y+16
-    // Count spawners within 16 blocks (dSq < 256) of each scan point
     private int scanBox(Spawner center, SpawnerType typeFilter) {
         int best = 0;
         for (int sx = 4; sx < 12; sx++) {
@@ -146,7 +143,6 @@ public class SpawnerCombination implements Comparable<SpawnerCombination> {
         if (spawnerCount < 1) return 0;
         Spawner center = findDensestCenter(preferredType);
         if (center == null) return 0;
-        // scan box counting only preferred type, score = (typeCount<<3) + totalCount
         int best = 0;
         for (int sx = 4; sx < 12; sx++) {
             for (int sz = 4; sz < 12; sz++) {

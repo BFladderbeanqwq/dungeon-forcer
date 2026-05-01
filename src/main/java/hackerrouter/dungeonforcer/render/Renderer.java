@@ -10,20 +10,14 @@ import net.minecraft.util.ARGB;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-/**
- * Renders spawner highlights and good chunk markers using 26.1 Gizmos API.
- * Gizmos automatically handles camera offset, blend state, and depth testing.
- */
 public class Renderer {
 
-    // Block modification colors
-    private static final int PLACE_STROKE = ARGB.color(230, 50, 150, 255);   // Blue-purple — needs placement
+    private static final int PLACE_STROKE = ARGB.color(230, 50, 150, 255);
     private static final int PLACE_FILL   = ARGB.color(100, 50, 150, 255);
-    private static final int BREAK_STROKE = ARGB.color(230, 255, 165, 0);    // Orange — needs breaking
+    private static final int BREAK_STROKE = ARGB.color(230, 255, 165, 0);
     private static final int BREAK_FILL   = ARGB.color(100, 255, 165, 0);
 
     public static void init() {
-        // BEFORE_GIZMOS fires while GizmoCollector is active, safe to call Gizmos API
         LevelRenderEvents.BEFORE_GIZMOS.register(Renderer::onWorldRender);
     }
 
@@ -40,9 +34,6 @@ public class Renderer {
         }
     }
 
-    // Gizmos added in BEFORE_GIZMOS are drained immediately by finalizeGizmoCollection().
-    // expireTimeMillis defaults to 0, which is always < currentMillis, so they get removed
-    // before rendering. Use persistForMillis(1) so they survive exactly one drain cycle.
     private static final int PERSIST_MS = 1;
 
     private static GizmoProperties g(GizmoProperties p) {
@@ -54,15 +45,15 @@ public class Renderer {
         int fillColor;
         switch (spawner.type) {
             case SKELETON:
-                strokeColor = ARGB.color(204, 77, 204, 255);  // Cyan
+                strokeColor = ARGB.color(204, 77, 204, 255);
                 fillColor   = ARGB.color(64, 77, 204, 255);
                 break;
             case ZOMBIE:
-                strokeColor = ARGB.color(204, 77, 255, 77);   // Green
+                strokeColor = ARGB.color(204, 77, 255, 77);
                 fillColor   = ARGB.color(64, 77, 255, 77);
                 break;
             case SPIDER:
-                strokeColor = ARGB.color(204, 255, 77, 77);   // Red
+                strokeColor = ARGB.color(204, 255, 77, 77);
                 fillColor   = ARGB.color(64, 255, 77, 77);
                 break;
             default:
@@ -71,7 +62,6 @@ public class Renderer {
                 break;
         }
 
-        // Spawner block highlight (fill + stroke)
         AABB spawnerBlock = new AABB(
                 spawner.x, spawner.y, spawner.z,
                 spawner.x + 1, spawner.y + 1, spawner.z + 1);
@@ -89,11 +79,6 @@ public class Renderer {
                 ARGB.color(77, ARGB.red(strokeColor), ARGB.green(strokeColor), ARGB.blue(strokeColor)), 1.5f)));
     }
 
-    /**
-     * Render block positions that player needs to modify.
-     * Blue-purple = needs block placement, Orange = needs block breaking.
-     * Uses setAlwaysOnTop() to ensure visibility through blocks.
-     */
     private static void renderBlockModifications(Spawner spawner) {
         if (spawner.blockModifications == null || spawner.blockModifications.isEmpty()) {
             return;
@@ -118,7 +103,6 @@ public class Renderer {
         int y = 64;
         int yellow = ARGB.color(204, 255, 255, 0);
 
-        // X axis
         g(Gizmos.line(new Vec3(x - 8, y, z), new Vec3(x + 8, y, z), yellow, 2.0f));
         g(Gizmos.line(new Vec3(x, y, z - 8), new Vec3(x, y, z + 8), yellow, 2.0f));
         g(Gizmos.line(new Vec3(x, y - 8, z), new Vec3(x, y + 8, z), yellow, 2.0f));

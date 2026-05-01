@@ -1,15 +1,5 @@
 package hackerrouter.dungeonforcer.rng;
 
-/**
- * Simulates vanilla WorldgenRandom behavior.
- *
- * Key: vanilla WorldgenRandom extends LegacyRandomSource → BitRandomSource,
- * all nextInt/nextLong/nextFloat methods dispatch through next(int bits),
- * and next(bits) is overridden by WorldgenRandom as randomSource.nextLong() >>> (64 - bits).
- *
- * This means nextInt(bound) uses BitRandomSource's default impl (based on next(31)),
- * not XoroshiroRandomSource's own nextInt(bound). The two algorithms are completely different!
- */
 public class WorldgenRandom {
     private final XoroshiroRandomSource randomSource;
     private int count;
@@ -23,10 +13,6 @@ public class WorldgenRandom {
         this(new XoroshiroRandomSource(seed));
     }
 
-    /**
-     * Core method: simulates vanilla WorldgenRandom.next(bits).
-     * vanilla: (int)(this.randomSource.nextLong() >>> (64 - bits))
-     */
     public int next(int bits) {
         this.count++;
         return (int) (this.randomSource.nextLong() >>> (64 - bits));
@@ -50,25 +36,16 @@ public class WorldgenRandom {
         this.setSeed(featureSeed);
     }
 
-    // ========== BitRandomSource default implementations ==========
-    // The following methods are exact copies of BitRandomSource's default impl,
-    // dispatching through next(bits) to ensure vanilla-consistent behavior.
-
     public int nextInt() {
         return this.next(32);
     }
 
-    /**
-     * Exact copy of BitRandomSource.nextInt(bound).
-     * Note: this differs from XoroshiroRandomSource.nextInt(bound) algorithm!
-     */
     public int nextInt(int bound) {
         if (bound <= 0) {
             throw new IllegalArgumentException("Bound must be positive");
         }
 
         if ((bound & (bound - 1)) == 0) {
-            // bound is a power of 2
             return (int) ((long) bound * (long) this.next(31) >> 31);
         }
 
@@ -82,10 +59,6 @@ public class WorldgenRandom {
         return modulo;
     }
 
-    /**
-     * Exact copy of BitRandomSource.nextLong().
-     * Note: this consumes 2 next() calls (= 2 Xoroshiro nextLong calls).
-     */
     public long nextLong() {
         int upper = this.next(32);
         int lower = this.next(32);
