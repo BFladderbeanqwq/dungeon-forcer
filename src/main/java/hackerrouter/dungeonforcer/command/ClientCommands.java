@@ -113,23 +113,22 @@ public class ClientCommands {
 
     private static void showCurrentResult() {
         SpawnerCombination combo = currentResults.get(currentResultIndex);
-        Chat.send(String.format("§6[DungeonForcer] §f结果 %d/%d (评分: %d, 刷怪笼: %d)",
+        Chat.send(String.format("§6[DungeonForcer] §fResult %d/%d (score: %d, spawners: %d)",
                 currentResultIndex + 1, currentResults.size(),
                 combo.points, combo.spawnerCount));
 
         for (int i = 0; i < combo.spawnerCount; i++) {
             Spawner s = combo.spawners[i];
             String color = getSpawnerColor(s.type);
-            Chat.send(String.format("  %s%s §f@ (%d, %d, %d) size=%dx%d exits=%d %s",
+            Chat.send(String.format("  %s%s §f@ (%d, %d, %d) size=%dx%d exits=%d floor=%d%s",
                     color, s.type.name(), s.x, s.y, s.z,
-                    s.sizeX, s.sizeZ, s.exitsNeeded,
-                    s.isDeep ? "§8[DEEP]" : ""));
+                    s.sizeX, s.sizeZ, s.exitsNeeded, s.floorBlocksNeeded,
+                    s.isDeep ? " §8[DEEP]" : ""));
         }
 
         RenderQueue.clear();
         for (int i = 0; i < combo.spawnerCount; i++) {
-            Spawner s = combo.spawners[i];
-            RenderQueue.addSpawnerHighlight(s);
+            RenderQueue.addSpawnerHighlight(combo.spawners[i]);
         }
     }
 
@@ -197,9 +196,9 @@ public class ClientCommands {
 
     private static String getSpawnerColor(SpawnerType type) {
         switch (type) {
-            case SKELETON: return "§b"; // 青色
-            case ZOMBIE: return "§a";   // 绿色
-            case SPIDER: return "§c";   // 红色
+            case SKELETON: return "§b"; // Cyan
+            case ZOMBIE: return "§a";   // Green
+            case SPIDER: return "§c";   // Red
             default: return "§f";
         }
     }

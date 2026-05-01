@@ -1,14 +1,14 @@
 package hackerrouter.dungeonforcer.rng;
 
 /**
- * 模拟 vanilla WorldgenRandom 的行为。
+ * Simulates vanilla WorldgenRandom behavior.
  *
- * 关键：vanilla WorldgenRandom 继承 LegacyRandomSource → BitRandomSource，
- * 所有 nextInt/nextLong/nextFloat 等方法都通过 next(int bits) 分发，
- * 而 next(bits) 被 WorldgenRandom 重写为 randomSource.nextLong() >>> (64 - bits)。
+ * Key: vanilla WorldgenRandom extends LegacyRandomSource → BitRandomSource,
+ * all nextInt/nextLong/nextFloat methods dispatch through next(int bits),
+ * and next(bits) is overridden by WorldgenRandom as randomSource.nextLong() >>> (64 - bits).
  *
- * 这意味着 nextInt(bound) 使用的是 BitRandomSource 的默认实现（基于 next(31)），
- * 而不是 XoroshiroRandomSource 自己的 nextInt(bound)。两者算法完全不同！
+ * This means nextInt(bound) uses BitRandomSource's default impl (based on next(31)),
+ * not XoroshiroRandomSource's own nextInt(bound). The two algorithms are completely different!
  */
 public class WorldgenRandom {
     private final XoroshiroRandomSource randomSource;
@@ -24,7 +24,7 @@ public class WorldgenRandom {
     }
 
     /**
-     * 核心方法：模拟 vanilla WorldgenRandom.next(bits)。
+     * Core method: simulates vanilla WorldgenRandom.next(bits).
      * vanilla: (int)(this.randomSource.nextLong() >>> (64 - bits))
      */
     public int next(int bits) {
@@ -50,17 +50,17 @@ public class WorldgenRandom {
         this.setSeed(featureSeed);
     }
 
-    // ========== BitRandomSource 默认实现 ==========
-    // 以下方法完全复制 BitRandomSource 的默认实现，
-    // 通过 next(bits) 分发，确保与 vanilla 行为一致。
+    // ========== BitRandomSource default implementations ==========
+    // The following methods are exact copies of BitRandomSource's default impl,
+    // dispatching through next(bits) to ensure vanilla-consistent behavior.
 
     public int nextInt() {
         return this.next(32);
     }
 
     /**
-     * BitRandomSource.nextInt(bound) 的精确复制。
-     * 注意：这与 XoroshiroRandomSource.nextInt(bound) 算法不同！
+     * Exact copy of BitRandomSource.nextInt(bound).
+     * Note: this differs from XoroshiroRandomSource.nextInt(bound) algorithm!
      */
     public int nextInt(int bound) {
         if (bound <= 0) {
@@ -68,7 +68,7 @@ public class WorldgenRandom {
         }
 
         if ((bound & (bound - 1)) == 0) {
-            // bound 是 2 的幂
+            // bound is a power of 2
             return (int) ((long) bound * (long) this.next(31) >> 31);
         }
 
@@ -83,8 +83,8 @@ public class WorldgenRandom {
     }
 
     /**
-     * BitRandomSource.nextLong() 的精确复制。
-     * 注意：这消耗 2 次 next() 调用（= 2 次 Xoroshiro nextLong）。
+     * Exact copy of BitRandomSource.nextLong().
+     * Note: this consumes 2 next() calls (= 2 Xoroshiro nextLong calls).
      */
     public long nextLong() {
         int upper = this.next(32);

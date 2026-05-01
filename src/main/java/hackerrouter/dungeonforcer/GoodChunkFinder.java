@@ -25,7 +25,7 @@ public class GoodChunkFinder {
 
         @Override
         public int compareTo(ChunkResult other) {
-            return Double.compare(other.score, this.score); // 降序
+            return Double.compare(other.score, this.score); // descending
         }
 
         @Override
@@ -82,14 +82,18 @@ public class GoodChunkFinder {
 
             DungeonFinder.DungeonAttempt attempt = new DungeonFinder.DungeonAttempt(
                     chunkX * 16 + px, py, chunkZ * 16 + pz,
-                    sx, sz, false, i, 0, 0);
+                    sx, sz, px, pz, false, i, 0, 0);
             normalAttempts.add(attempt);
 
-            if (py >= 10 && py <= 60) {
-                score += 10;
+                // Cross-chunk dungeons can be manipulated by player (high value)
+            boolean crossChunk = px < sx + 1 || px > 15 - (sx + 1)
+                    || pz < sz + 1 || pz > 15 - (sz + 1);
+
+            if (py >= 10 && py <= 50) {
+                score += crossChunk ? 10 : 3;
                 potentialSpawners++;
-            } else if (py >= 0 && py <= 100) {
-                score += 5;
+            } else if (py >= 0 && py <= 70) {
+                score += crossChunk ? 5 : 1;
                 potentialSpawners++;
             }
 
@@ -108,10 +112,11 @@ public class GoodChunkFinder {
 
                 DungeonFinder.DungeonAttempt attempt = new DungeonFinder.DungeonAttempt(
                         chunkX * 16 + px, py, chunkZ * 16 + pz,
-                        sx, sz, true, i, 0, 0);
+                        sx, sz, px, pz, true, i, 0, 0);
                 normalAttempts.add(attempt);
 
-                score += 5;
+                // Deep dungeons Y range [-58, -1], all within stone layer
+                score += 8;
                 potentialSpawners++;
             }
         }

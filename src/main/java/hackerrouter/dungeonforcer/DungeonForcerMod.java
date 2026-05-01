@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 
 public class DungeonForcerMod implements ClientModInitializer {
 	public static final String MOD_ID = "dungeonforcer";
+	public static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(MOD_ID);
 
 	@Override
 	public void onInitializeClient() {

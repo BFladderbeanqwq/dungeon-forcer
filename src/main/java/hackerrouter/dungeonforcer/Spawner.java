@@ -1,5 +1,8 @@
 package hackerrouter.dungeonforcer;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Spawner {
     public int x;
     public int y;
@@ -12,7 +15,19 @@ public class Spawner {
     public boolean isDeep;
     public int attemptIndex;
 
-    public Spawner() {}
+    /**
+     * List of blocks the player needs to modify.
+     * Each int[4]: {worldX, worldY, worldZ, action}
+     * action: 1 = place solid block (PLACE), -1 = break block (BREAK)
+     */
+    public List<int[]> blockModifications;
+
+    public static final int ACTION_PLACE = 1;
+    public static final int ACTION_BREAK = -1;
+
+    public Spawner() {
+        this.blockModifications = new ArrayList<>();
+    }
 
     public Spawner(int x, int y, int z, int sizeX, int sizeZ, SpawnerType type,
                    int exitsNeeded, int floorBlocksNeeded, boolean isDeep, int attemptIndex) {
@@ -26,15 +41,21 @@ public class Spawner {
         this.floorBlocksNeeded = floorBlocksNeeded;
         this.isDeep = isDeep;
         this.attemptIndex = attemptIndex;
+        this.blockModifications = new ArrayList<>();
     }
 
     public Spawner copy() {
-        return new Spawner(x, y, z, sizeX, sizeZ, type, exitsNeeded, floorBlocksNeeded, isDeep, attemptIndex);
+        Spawner s = new Spawner(x, y, z, sizeX, sizeZ, type, exitsNeeded, floorBlocksNeeded, isDeep, attemptIndex);
+        for (int[] mod : blockModifications) {
+            s.blockModifications.add(new int[]{mod[0], mod[1], mod[2], mod[3]});
+        }
+        return s;
     }
 
     @Override
     public String toString() {
-        return String.format("Spawner{type=%s, pos=(%d,%d,%d), size=(%d,%d), exits=%d, floor=%d, deep=%s, attempt=%d}",
-                type, x, y, z, sizeX, sizeZ, exitsNeeded, floorBlocksNeeded, isDeep, attemptIndex);
+        return String.format("Spawner{type=%s, pos=(%d,%d,%d), size=(%d,%d), exits=%d, floor=%d, deep=%s, attempt=%d, mods=%d}",
+                type, x, y, z, sizeX, sizeZ, exitsNeeded, floorBlocksNeeded, isDeep, attemptIndex,
+                blockModifications.size());
     }
 }
