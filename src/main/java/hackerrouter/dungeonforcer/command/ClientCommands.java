@@ -9,7 +9,8 @@ import hackerrouter.dungeonforcer.render.RenderQueue;
 import hackerrouter.dungeonforcer.util.Chat;
 import hackerrouter.dungeonforcer.util.FeatureIndexHelper;
 import hackerrouter.dungeonforcer.util.World;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.ChunkPos;
@@ -25,9 +26,9 @@ public class ClientCommands {
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(
-                ClientCommandManager.literal("dungeonforcer")
-                        .then(ClientCommandManager.literal("run")
-                                .then(ClientCommandManager.argument("searchType", StringArgumentType.word())
+                literal("dungeonforcer")
+                        .then(literal("run")
+                                .then(argument("searchType", StringArgumentType.word())
                                         .suggests((ctx, builder) -> {
                                             for (SearchType st : SearchType.values()) {
                                                 builder.suggest(st.name());
@@ -37,7 +38,7 @@ public class ClientCommands {
                                         .executes(ctx -> runSearch(ctx.getSource(),
                                                 SearchType.valueOf(StringArgumentType.getString(ctx, "searchType")),
                                                 null))
-                                        .then(ClientCommandManager.argument("spawnerType", StringArgumentType.word())
+                                        .then(argument("spawnerType", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> {
                                                     for (SpawnerType st : SpawnerType.values()) {
                                                         builder.suggest(st.name());
@@ -47,22 +48,22 @@ public class ClientCommands {
                                                 .executes(ctx -> runSearch(ctx.getSource(),
                                                         SearchType.valueOf(StringArgumentType.getString(ctx, "searchType")),
                                                         SpawnerType.valueOf(StringArgumentType.getString(ctx, "spawnerType")))))))
-                        .then(ClientCommandManager.literal("next")
+                        .then(literal("next")
                                 .executes(ctx -> nextResult(ctx.getSource())))
-                        .then(ClientCommandManager.literal("reset")
+                        .then(literal("reset")
                                 .executes(ctx -> reset(ctx.getSource())))
-                        .then(ClientCommandManager.literal("seed")
-                                .then(ClientCommandManager.argument("seed", LongArgumentType.longArg())
+                        .then(literal("seed")
+                                .then(argument("seed", LongArgumentType.longArg())
                                         .executes(ctx -> setSeed(ctx.getSource(),
                                                 LongArgumentType.getLong(ctx, "seed")))))
-                        .then(ClientCommandManager.literal("featureindex")
+                        .then(literal("featureindex")
                                 .executes(ctx -> showFeatureIndex(ctx.getSource())))
-                        .then(ClientCommandManager.literal("goodchunkfinder")
-                                .then(ClientCommandManager.literal("run")
-                                        .then(ClientCommandManager.argument("radius", IntegerArgumentType.integer(1, 32))
+                        .then(literal("goodchunkfinder")
+                                .then(literal("run")
+                                        .then(argument("radius", IntegerArgumentType.integer(1, 32))
                                                 .executes(ctx -> runGoodChunkFinder(ctx.getSource(),
                                                         IntegerArgumentType.getInteger(ctx, "radius")))))
-                                .then(ClientCommandManager.literal("reset")
+                                .then(literal("reset")
                                         .executes(ctx -> resetGoodChunkFinder(ctx.getSource()))))
         );
     }
@@ -74,17 +75,17 @@ public class ClientCommands {
 
         long seed = seedOverride ? worldSeed : World.getWorldSeed();
 
-        ChunkPos chunkPos = new ChunkPos(client.player.blockPosition());
+        ChunkPos chunkPos = ChunkPos.containing(client.player.blockPosition());
 
         int normalIndex = FeatureIndexHelper.getNormalFeatureIndex();
         int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
 
-        Chat.send("§6[DungeonForcer] §fSearching chunk (" + chunkPos.x + ", " + chunkPos.z + ")...");
+        Chat.send("§6[DungeonForcer] §fSearching chunk (" + chunkPos.x() + ", " + chunkPos.z() + ")...");
         Chat.send("§7featureIndex: normal=" + normalIndex + ", deep=" + deepIndex);
 
         DungeonFinder finder = new DungeonFinder();
         currentResults = finder.runForChunk(
-                chunkPos.x, chunkPos.z, seed,
+                chunkPos.x(), chunkPos.z(), seed,
                 normalIndex, deepIndex,
                 searchType, preferredType,
                 (x, y, z) -> World.getBlockState(x, y, z));
@@ -165,14 +166,14 @@ public class ClientCommands {
         if (client.player == null) return 0;
 
         long seed = seedOverride ? worldSeed : World.getWorldSeed();
-        ChunkPos chunkPos = new ChunkPos(client.player.blockPosition());
+        ChunkPos chunkPos = ChunkPos.containing(client.player.blockPosition());
         int normalIndex = FeatureIndexHelper.getNormalFeatureIndex();
         int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
 
         Chat.send("§6[DungeonForcer] §fScanning " + ((2*radius+1)*(2*radius+1)) + " chunks...");
 
         List<GoodChunkFinder.ChunkResult> results = GoodChunkFinder.findGoodChunks(
-                chunkPos.x, chunkPos.z, radius, seed, normalIndex, deepIndex, 20);
+                chunkPos.x(), chunkPos.z(), radius, seed, normalIndex, deepIndex, 20);
 
         if (results.isEmpty()) {
             Chat.send("§c[DungeonForcer] §fNo good chunk found yet.");

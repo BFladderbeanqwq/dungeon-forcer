@@ -1,71 +1,70 @@
 package hackerrouter.dungeonforcer.render;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
 import hackerrouter.dungeonforcer.Spawner;
 import hackerrouter.dungeonforcer.SpawnerType;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
-import net.minecraft.client.Camera;
-import net.minecraft.client.renderer.GameRenderer;
-import org.joml.Matrix4f;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.gizmos.GizmoStyle;
+import net.minecraft.gizmos.Gizmos;
+import net.minecraft.util.ARGB;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayList;
-import java.util.List;
-
+/**
+ * 使用 26.1 Gizmos API 渲染刷怪笼高亮和好区块标记。
+ * Gizmos 自动处理相机偏移、混合状态和深度测试。
+ */
 public class Renderer {
 
     public static void init() {
-        WorldRenderEvents.AFTER_TRANSLUCENT.register(Renderer::onWorldRender);
+        // BEFORE_GIZMOS 在 GizmoCollector 活跃期间触发，可以安全调用 Gizmos API
+        LevelRenderEvents.BEFORE_GIZMOS.register(Renderer::onWorldRender);
     }
 
-    private static void onWorldRender(WorldRenderContext context) {
+    private static void onWorldRender(LevelRenderContext context) {
         if (RenderQueue.isEmpty()) return;
-
-        Camera camera = context.camera();
-        PoseStack poseStack = context.matrixStack();
-
-        poseStack.pushPose();
-        poseStack.translate(
-                -camera.getPosition().x,
-                -camera.getPosition().y,
-                -camera.getPosition().z
-        );
-
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableDepthTest();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
         // 渲染刷怪笼高亮
         for (Spawner spawner : RenderQueue.getSpawnerHighlights()) {
-            renderSpawnerBox(poseStack, spawner);
+            renderSpawnerBox(spawner);
         }
 
         // 渲染好区块标记
         for (int[] chunkCross : RenderQueue.getChunkCrosses()) {
-            renderChunkCross(poseStack, chunkCross[0], chunkCross[1]);
+            renderChunkCross(chunkCross[0], chunkCross[1]);
         }
-
-        RenderSystem.enableDepthTest();
-        RenderSystem.disableBlend();
-        poseStack.popPose();
     }
 
-    private static void renderSpawnerBox(PoseStack poseStack, Spawner spawner) {
-        float r, g, b;
+    private static void renderSpawnerBox(Spawner spawner) {
+        int strokeColor;
+        int fillColor;
         switch (spawner.type) {
-            case SKELETON: r = 0.3f; g = 0.8f; b = 1.0f; break; // 青色
-            case ZOMBIE:   r = 0.3f; g = 1.0f; b = 0.3f; break; // 绿色
-            case SPIDER:   r = 1.0f; g = 0.3f; b = 0.3f; break; // 红色
-            default:       r = 1.0f; g = 1.0f; b = 1.0f; break;
+            case SKELETON:
+                strokeColor = ARGB.color(204, 77, 204, 255);  // 青色
+                fillColor   = ARGB.color(64, 77, 204, 255);
+                break;
+            case ZOMBIE:
+                strokeColor = ARGB.color(204, 77, 255, 77);   // 绿色
+                fillColor   = ARGB.color(64, 77, 255, 77);
+                break;
+            case SPIDER:
+                strokeColor = ARGB.color(204, 255, 77, 77);   // 红色
+                fillColor   = ARGB.color(64, 255, 77, 77);
+                break;
+            default:
+                strokeColor = ARGB.color(204, 255, 255, 255);
+                fillColor   = ARGB.color(64, 255, 255, 255);
+                break;
         }
-        float alpha = 0.3f;
 
-        renderBox(poseStack, spawner.x, spawner.y, spawner.z,
-                spawner.x + 1, spawner.y + 1, spawner.z + 1,
-                r, g, b, 0.8f);
+        // 刷怪笼方块高亮（实心 + 描边）
+        AABB spawnerBlock = new AABB(
+                spawner.x, spawner.y, spawner.z,
+                spawner.x + 1, spawner.y + 1, spawner.z + 1);
+        Gizmos.cuboid(spawnerBlock,
+                GizmoStyle.strokeAndFill(strokeColor, 2.5f, fillColor));
 
+        // 地牢范围描边
         int minX = spawner.x - spawner.sizeX - 1;
         int maxX = spawner.x + spawner.sizeX + 2;
         int minZ = spawner.z - spawner.sizeZ - 1;
@@ -73,69 +72,23 @@ public class Renderer {
         int minY = spawner.y - 1;
         int maxY = spawner.y + 5;
 
-        renderBoxOutline(poseStack, minX, minY, minZ, maxX, maxY, maxZ,
-                r, g, b, alpha);
+        AABB dungeonBounds = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+        Gizmos.cuboid(dungeonBounds,
+                GizmoStyle.stroke(ARGB.color(77, ARGB.red(strokeColor),
+                        ARGB.green(strokeColor), ARGB.blue(strokeColor)), 1.5f));
     }
 
-    private static void renderChunkCross(PoseStack poseStack, int chunkX, int chunkZ) {
+    private static void renderChunkCross(int chunkX, int chunkZ) {
         int x = chunkX * 16 + 8;
         int z = chunkZ * 16 + 8;
         int y = 64;
+        int yellow = ARGB.color(204, 255, 255, 0);
 
-        renderLine(poseStack, x - 8, y, z, x + 8, y, z, 1.0f, 1.0f, 0.0f, 0.8f);
-        renderLine(poseStack, x, y, z - 8, x, y, z + 8, 1.0f, 1.0f, 0.0f, 0.8f);
-        renderLine(poseStack, x, y - 8, z, x, y + 8, z, 1.0f, 1.0f, 0.0f, 0.8f);
-    }
-
-    private static void renderBox(PoseStack poseStack,
-                                  float x1, float y1, float z1, float x2, float y2, float z2,
-                                  float r, float g, float b, float a) {
-        Matrix4f matrix = poseStack.last().pose();
-        Tesselator tesselator = Tesselator.getInstance();
-        BufferBuilder buffer = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-
-        // Bottom
-        buffer.addVertex(matrix, x1, y1, z1).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y1, z1).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y1, z2).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x1, y1, z2).setColor(r, g, b, a);
-        // Top
-        buffer.addVertex(matrix, x1, y2, z1).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x1, y2, z2).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y2, z2).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y2, z1).setColor(r, g, b, a);
-
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-    }
-
-    private static void renderBoxOutline(PoseStack poseStack,
-                                         float x1, float y1, float z1, float x2, float y2, float z2,
-                                         float r, float g, float b, float a) {
-        Matrix4f matrix = poseStack.last().pose();
-        Tesselator tesselator = Tesselator.getInstance();
-        BufferBuilder buffer = tesselator.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-
-        // Bottom face
-        buffer.addVertex(matrix, x1, y1, z1).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y1, z1).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y1, z1).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y1, z2).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y1, z2).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x1, y1, z2).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x1, y1, z2).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x1, y1, z1).setColor(r, g, b, a);
-
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
-    }
-
-    private static void renderLine(PoseStack poseStack,
-                                   float x1, float y1, float z1, float x2, float y2, float z2,
-                                   float r, float g, float b, float a) {
-        Matrix4f matrix = poseStack.last().pose();
-        Tesselator tesselator = Tesselator.getInstance();
-        BufferBuilder buffer = tesselator.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-        buffer.addVertex(matrix, x1, y1, z1).setColor(r, g, b, a);
-        buffer.addVertex(matrix, x2, y2, z2).setColor(r, g, b, a);
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
+        // X 轴线
+        Gizmos.line(new Vec3(x - 8, y, z), new Vec3(x + 8, y, z), yellow, 2.0f);
+        // Z 轴线
+        Gizmos.line(new Vec3(x, y, z - 8), new Vec3(x, y, z + 8), yellow, 2.0f);
+        // Y 轴线
+        Gizmos.line(new Vec3(x, y - 8, z), new Vec3(x, y + 8, z), yellow, 2.0f);
     }
 }

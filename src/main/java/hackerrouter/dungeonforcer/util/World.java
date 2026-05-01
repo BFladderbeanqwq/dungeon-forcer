@@ -68,7 +68,7 @@ public class World {
     public static String getDimension() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level != null) {
-            return mc.level.dimension().location().toString();
+            return mc.level.dimension().identifier().toString();
         }
         return "unknown";
     }
