@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "dungeonforcer",
+	"version": "${version}",
+	"name": "Dungeon Forcer",
+	"description": "dungeonforcer for 26.1.1, basic concept is from andrew_10_",
+	"authors": [
+		"HackerRouter"
+	],
+	"contact": {
+		"sources": "https://github.com/HackerRouter/dungeon-forcer"
+	},
+	"icon": "assets/dungeonforcer/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"hackerrouter.dungeonforcer.DungeonForcerMod"
+		]
+	},
+	"mixins": [
+		"dungeonforcer.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.2",
+		"minecraft": "~26.1.1",
+		"java": ">=25"
+	}
+}
