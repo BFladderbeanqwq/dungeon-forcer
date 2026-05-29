@@ -23,6 +23,8 @@ public class ClientCommands {
     private static boolean seedOverride = false;
     private static List<SpawnerCombination> currentResults;
     private static int currentResultIndex = 0;
+    private static List<DungeonLootBlueprint> currentLootResults;
+    private static int currentLootResultIndex = 0;
 
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(
@@ -58,6 +60,29 @@ public class ClientCommands {
                                                 LongArgumentType.getLong(ctx, "seed")))))
                         .then(literal("featureindex")
                                 .executes(ctx -> showFeatureIndex(ctx.getSource())))
+                        .then(literal("loot")
+                                .executes(ctx -> runLootSearch(ctx.getSource(),
+                                        "minecraft:enchanted_golden_apple", 10, 1, 2))
+                                .then(argument("targetItem", StringArgumentType.word())
+                                        .executes(ctx -> runLootSearch(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "targetItem"), 10, 1, 2))
+                                        .then(argument("maxResults", IntegerArgumentType.integer(1, 50))
+                                                .executes(ctx -> runLootSearch(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "targetItem"),
+                                                        IntegerArgumentType.getInteger(ctx, "maxResults"), 1, 2))
+                                                .then(argument("maxFloorBreaks", IntegerArgumentType.integer(0, 8))
+                                                        .executes(ctx -> runLootSearch(ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "targetItem"),
+                                                                IntegerArgumentType.getInteger(ctx, "maxResults"),
+                                                                IntegerArgumentType.getInteger(ctx, "maxFloorBreaks"), 2))
+                                                        .then(argument("maxChestBlockers", IntegerArgumentType.integer(0, 8))
+                                                                .executes(ctx -> runLootSearch(ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "targetItem"),
+                                                                        IntegerArgumentType.getInteger(ctx, "maxResults"),
+                                                                        IntegerArgumentType.getInteger(ctx, "maxFloorBreaks"),
+                                                                        IntegerArgumentType.getInteger(ctx, "maxChestBlockers"))))))))
+                        .then(literal("lootnext")
+                                .executes(ctx -> nextLootResult(ctx.getSource())))
                         .then(literal("goodchunkfinder")
                                 .then(literal("run")
                                         .then(argument("radius", IntegerArgumentType.integer(1, 32))
@@ -138,6 +163,88 @@ public class ClientCommands {
         RenderQueue.clear();
         for (int i = 0; i < combo.spawnerCount; i++) {
             RenderQueue.addSpawnerHighlight(combo.spawners[i]);
+        }
+    }
+
+    private static int runLootSearch(FabricClientCommandSource source, String targetItem, int maxResults,
+                                     int maxFloorBreaks, int maxChestBlockers) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) return 0;
+
+        long seed = seedOverride ? worldSeed : World.getWorldSeed();
+        ChunkPos chunkPos = ChunkPos.containing(client.player.blockPosition());
+        int normalIndex = FeatureIndexHelper.getNormalFeatureIndex();
+        int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
+
+        Chat.send("搂6[DungeonForcer-v2] 搂fSearching loot seed in chunk (" + chunkPos.x() + ", " + chunkPos.z() + ")...");
+        Chat.send(String.format("搂7target=%s maxResults=%d floorBreaks<=%d blockers<=%d",
+                targetItem, maxResults, maxFloorBreaks, maxChestBlockers));
+
+        DungeonLootForcer forcer = new DungeonLootForcer();
+        currentLootResults = forcer.runForChunk(
+                chunkPos.x(), chunkPos.z(), seed,
+                normalIndex, deepIndex,
+                targetItem, maxResults, maxFloorBreaks, maxChestBlockers,
+                (x, y, z) -> World.getBlockState(x, y, z));
+        currentLootResultIndex = 0;
+
+        if (currentLootResults.isEmpty()) {
+            RenderQueue.clear();
+            Chat.send("搂c[DungeonForcer-v2] 搂fNo loot blueprint found with current limits.");
+        } else {
+            showCurrentLootResult();
+        }
+
+        return 1;
+    }
+
+    private static int nextLootResult(FabricClientCommandSource source) {
+        if (currentLootResults == null || currentLootResults.isEmpty()) {
+            Chat.send("搂c[DungeonForcer-v2] 搂fNo loot result. Try /dungeonforcer loot first.");
+            return 0;
+        }
+        currentLootResultIndex = (currentLootResultIndex + 1) % currentLootResults.size();
+        showCurrentLootResult();
+        return 1;
+    }
+
+    private static void showCurrentLootResult() {
+        DungeonLootBlueprint b = currentLootResults.get(currentLootResultIndex);
+        Chat.send(String.format("搂6[DungeonForcer-v2] 搂fLoot result %d/%d @ (%d, %d, %d) size=%dx%d hitChest=%d%s",
+                currentLootResultIndex + 1, currentLootResults.size(),
+                b.originX, b.originY, b.originZ, b.sizeX, b.sizeZ, b.hitChestIndex,
+                b.isDeep ? " 搂8[DEEP]" : ""));
+        Chat.send(String.format("  搂7lootSeed[1]=%d lootSeed[2]=%d spawner=%s",
+                b.firstChestLootSeed, b.secondChestLootSeed, b.spawnerType));
+        Chat.send(String.format("  搂7wall=%d floorBreak=%d chestBlockers=%d chestPos=%d",
+                b.wallBlocks.size(), b.floorBreaks.size(), b.chestBlockers.size(), b.chestPositions.size()));
+        sendPositions("wall blocks", b.wallBlocks);
+        sendPositions("floor breaks", b.floorBreaks);
+        sendPositions("chest blockers", b.chestBlockers);
+        sendPositions("chests", b.chestPositions);
+
+        RenderQueue.clear();
+        RenderQueue.addSpawnerHighlight(b.toSpawnerHighlight());
+    }
+
+    private static void sendPositions(String label, List<int[]> positions) {
+        if (positions.isEmpty()) {
+            Chat.send("  搂8" + label + ": none");
+            return;
+        }
+        int perLine = 6;
+        for (int start = 0; start < positions.size(); start += perLine) {
+            StringBuilder sb = new StringBuilder("  搂7").append(label);
+            if (positions.size() > perLine) {
+                sb.append(" ").append(start + 1).append("-").append(Math.min(start + perLine, positions.size()));
+            }
+            sb.append(": ");
+            for (int i = start; i < Math.min(start + perLine, positions.size()); i++) {
+                int[] p = positions.get(i);
+                if (i > start) sb.append(" ");
+                sb.append("(").append(p[0]).append(",").append(p[1]).append(",").append(p[2]).append(")");
+            }
+            Chat.send(sb.toString());
         }
     }
 

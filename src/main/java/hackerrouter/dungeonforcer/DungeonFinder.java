@@ -2,7 +2,6 @@ package hackerrouter.dungeonforcer;
 
 import hackerrouter.dungeonforcer.rng.WorldgenRandom;
 import hackerrouter.dungeonforcer.rng.XoroshiroRandomSource;
-import hackerrouter.dungeonforcer.util.Chat;
 
 import java.util.ArrayList;
 import java.util.Collections;
