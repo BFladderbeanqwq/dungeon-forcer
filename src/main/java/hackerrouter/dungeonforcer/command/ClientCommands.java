@@ -216,9 +216,10 @@ public class ClientCommands {
                 b.isDeep ? " 搂8[DEEP]" : ""));
         Chat.send(String.format("  搂7lootSeed[1]=%d lootSeed[2]=%d spawner=%s",
                 b.firstChestLootSeed, b.secondChestLootSeed, b.spawnerType));
-        Chat.send(String.format("  搂7wall=%d floorBreak=%d chestBlockers=%d chestPos=%d",
-                b.wallBlocks.size(), b.floorBreaks.size(), b.chestBlockers.size(), b.chestPositions.size()));
-        sendPositions("wall blocks", b.wallBlocks);
+        Chat.send(String.format("  搂7requiredPlace=%d floorBreak=%d chestBlockers=%d chestPos=%d",
+                b.requiredPlaceBlocks.size() + b.chestBlockers.size(),
+                b.floorBreaks.size(), b.chestBlockers.size(), b.chestPositions.size()));
+        sendPositions("required shell", b.requiredPlaceBlocks);
         sendPositions("floor breaks", b.floorBreaks);
         sendPositions("chest blockers", b.chestBlockers);
         sendPositions("chests", b.chestPositions);

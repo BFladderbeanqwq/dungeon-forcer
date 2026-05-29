@@ -226,6 +226,7 @@ public class DungeonLootForcer {
         for (Cell cell : geometry.wallCells) {
             blueprint.wallBlocks.add(worldPos(geometry, cell, 0));
         }
+        addRequiredPlaceBlocks(blueprint, geometry, floorBreaks);
         for (Cell cell : floorBreaks) {
             blueprint.floorBreaks.add(worldPos(geometry, cell, -1));
         }
@@ -236,6 +237,31 @@ public class DungeonLootForcer {
             blueprint.chestPositions.add(worldPos(geometry, cell, 0));
         }
         return blueprint;
+    }
+
+    private void addRequiredPlaceBlocks(DungeonLootBlueprint blueprint, AttemptGeometry geometry, List<Cell> floorBreaks) {
+        Set<Long> floorAir = toKeySet(floorBreaks);
+        for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
+            for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
+                if (!floorAir.contains(Cell.key(dx, dz))) {
+                    blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), -1));
+                }
+                blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), 4));
+
+                boolean wall = dx == -geometry.sizeX - 1 || dx == geometry.sizeX + 1
+                        || dz == -geometry.sizeZ - 1 || dz == geometry.sizeZ + 1;
+                if (wall) {
+                    for (int dy = 0; dy <= 3; dy++) {
+                        int wx = geometry.originX + dx;
+                        int wy = geometry.originY + dy;
+                        int wz = geometry.originZ + dz;
+                        if (isSolid(wx, wy, wz)) {
+                            blueprint.requiredPlaceBlocks.add(new int[]{wx, wy, wz});
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private int[] worldPos(AttemptGeometry geometry, Cell cell, int dy) {
@@ -265,6 +291,21 @@ public class DungeonLootForcer {
             keys.add(cell.key());
         }
         return keys;
+    }
+
+    private boolean isSolid(int worldX, int worldY, int worldZ) {
+        return (getBlock(worldX, worldY, worldZ) & DungeonFinder.SOLID) != 0;
+    }
+
+    private byte getBlock(int worldX, int worldY, int worldZ) {
+        int bx = worldX - (chunkBlockX - 4);
+        int by = worldY - DungeonFinder.WORLD_MIN_Y;
+        int bz = worldZ - (chunkBlockZ - 4);
+        if (bx < 0 || bx >= DungeonFinder.BUFFER_XZ || by < 0 || by >= DungeonFinder.BUFFER_Y
+                || bz < 0 || bz >= DungeonFinder.BUFFER_XZ) {
+            return DungeonFinder.UNKNOWN;
+        }
+        return buffer[bx * DungeonFinder.BUFFER_XZ * DungeonFinder.BUFFER_Y + by * DungeonFinder.BUFFER_XZ + bz];
     }
 
     private void fillBuffer(DungeonFinder.BlockReader blockReader) {

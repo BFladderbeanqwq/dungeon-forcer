@@ -115,14 +115,15 @@ A successful v2 result prints:
 - whether it is from `MONSTER_ROOM` or `MONSTER_ROOM_DEEP`;
 - first and second chest loot seeds;
 - which chest hit the target item;
-- wall block coordinates;
+- required shell coordinates;
 - floor break coordinates;
 - chest blocker coordinates;
 - generated chest coordinates.
 
 The renderer highlights:
 
-- blue blocks: blocks to place;
+- gray blocks: dungeon floor, ceiling, and wall-ring reference;
+- blue blocks: required shell and chest blocker blocks to pre-place;
 - orange blocks: blocks to break;
 - dungeon bounds and spawner position.
 

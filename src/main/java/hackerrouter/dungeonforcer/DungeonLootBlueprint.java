@@ -17,13 +17,14 @@ public class DungeonLootBlueprint {
     public int hitChestIndex;
 
     public final List<int[]> wallBlocks = new ArrayList<>();
+    public final List<int[]> requiredPlaceBlocks = new ArrayList<>();
     public final List<int[]> floorBreaks = new ArrayList<>();
     public final List<int[]> chestBlockers = new ArrayList<>();
     public final List<int[]> chestPositions = new ArrayList<>();
 
     public Spawner toSpawnerHighlight() {
         Spawner spawner = new Spawner(originX, originY, originZ, sizeX, sizeZ, spawnerType, 0, 0, isDeep, attemptIndex);
-        for (int[] pos : wallBlocks) {
+        for (int[] pos : requiredPlaceBlocks) {
             spawner.blockModifications.add(new int[]{pos[0], pos[1], pos[2], Spawner.ACTION_PLACE});
         }
         for (int[] pos : chestBlockers) {
