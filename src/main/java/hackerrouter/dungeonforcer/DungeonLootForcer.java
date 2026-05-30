@@ -49,7 +49,6 @@ public class DungeonLootForcer {
         WorldgenRandom rng = new WorldgenRandom(0L);
         rng.setFeatureSeed(decorationSeed, featureIndex, DungeonFinder.STEP_ORDINAL);
         int yRange = yMax - yMin + 1;
-        FeatureSimulator featureSimulator = new FeatureSimulator(buffer, chunkBlockX, chunkBlockZ);
 
         for (int attempt = 0; attempt < attempts && results.size() < maxResults; attempt++) {
             int px = rng.nextInt(16);
@@ -62,16 +61,13 @@ public class DungeonLootForcer {
             int originZ = chunkBlockZ + pz;
 
             WorldgenRandom attemptRng = new WorldgenRandom(new XoroshiroRandomSource(attemptLo, attemptHi));
-            FeatureSimulator.PlaceResult placed = featureSimulator.simulate(attemptRng, originX, py, originZ, deep, attempt);
-
-            if (placed.passed()) {
-                AttemptGeometry geometry = buildGeometry(originX, py, originZ, placed.sizeX, placed.sizeZ);
-                enumerateFloorMasks(results, attemptLo, attemptHi, geometry, deep, attempt,
-                        targetItem, maxResults, maxFloorBreaks, maxChestBlockers);
-            }
+            int sizeX = attemptRng.nextInt(2) + 2;
+            int sizeZ = attemptRng.nextInt(2) + 2;
+            AttemptGeometry geometry = buildGeometry(originX, py, originZ, sizeX, sizeZ);
+            enumerateFloorMasks(results, attemptLo, attemptHi, geometry, deep, attempt,
+                    targetItem, maxResults, maxFloorBreaks, maxChestBlockers);
 
             rng = attemptRng;
-            featureSimulator.undoAll();
         }
     }
 
@@ -109,34 +105,122 @@ public class DungeonLootForcer {
                                        long attemptLo, long attemptHi, AttemptGeometry geometry,
                                        boolean deep, int attemptIndex, String targetItem, int maxResults,
                                        int maxChestBlockers, List<Cell> floorBreaks) {
-        int blockerLimit = Math.min(maxChestBlockers, geometry.blockerCells.size());
-        for (int blockers = 0; blockers <= blockerLimit && results.size() < maxResults; blockers++) {
-            enumerateBlockerCombination(results, attemptLo, attemptHi, geometry, deep, attemptIndex, targetItem,
-                    maxResults, 0, blockers, floorBreaks, new ArrayList<>());
-        }
-    }
+        int openingLimit = Math.min(Math.min(maxChestBlockers, 5), geometry.wallCells.size());
+        if (openingLimit < 1) return;
 
-    private void enumerateBlockerCombination(List<DungeonLootBlueprint> results,
-                                             long attemptLo, long attemptHi, AttemptGeometry geometry,
-                                             boolean deep, int attemptIndex, String targetItem, int maxResults,
-                                             int start, int remaining, List<Cell> floorBreaks, List<Cell> blockers) {
-        if (results.size() >= maxResults) return;
-        if (remaining == 0) {
-            SimulationResult sim = simulateLayout(attemptLo, attemptHi, geometry, floorBreaks, blockers);
-            if (sim.firstLootSeed != 0L && SimpleDungeonLootSimulator.contains(sim.firstLootSeed, targetItem)) {
-                results.add(toBlueprint(geometry, deep, attemptIndex, 1, sim, floorBreaks, blockers));
-            } else if (sim.secondLootSeed != 0L && SimpleDungeonLootSimulator.contains(sim.secondLootSeed, targetItem)) {
-                results.add(toBlueprint(geometry, deep, attemptIndex, 2, sim, floorBreaks, blockers));
+        List<Cell> relevantOpenings = findRelevantOpenings(attemptLo, attemptHi, geometry, floorBreaks);
+        Cell filler = findFillerOpening(geometry, relevantOpenings);
+        if (relevantOpenings.isEmpty()) {
+            if (filler != null) {
+                testOpeningSet(results, attemptLo, attemptHi, geometry, deep, attemptIndex, targetItem,
+                        maxResults, floorBreaks, List.of(filler));
             }
             return;
         }
-        for (int i = start; i <= geometry.blockerCells.size() - remaining; i++) {
-            blockers.add(geometry.blockerCells.get(i));
-            enumerateBlockerCombination(results, attemptLo, attemptHi, geometry, deep, attemptIndex, targetItem,
-                    maxResults, i + 1, remaining - 1, floorBreaks, blockers);
-            blockers.remove(blockers.size() - 1);
+
+        for (int openings = 0; openings <= Math.min(openingLimit, relevantOpenings.size())
+                && results.size() < maxResults; openings++) {
+            enumerateRelevantOpenings(results, attemptLo, attemptHi, geometry, deep, attemptIndex, targetItem,
+                    maxResults, openingLimit, relevantOpenings, filler, 0, openings, floorBreaks, new ArrayList<>());
+        }
+    }
+
+    private void enumerateRelevantOpenings(List<DungeonLootBlueprint> results,
+                                           long attemptLo, long attemptHi, AttemptGeometry geometry,
+                                           boolean deep, int attemptIndex, String targetItem, int maxResults,
+                                           int openingLimit, List<Cell> relevantOpenings, Cell filler,
+                                           int start, int remaining, List<Cell> floorBreaks, List<Cell> openings) {
+        if (results.size() >= maxResults) return;
+        if (remaining == 0) {
+            List<Cell> actualOpenings = openings;
+            if (actualOpenings.isEmpty()) {
+                if (filler == null || openingLimit < 1) return;
+                actualOpenings = List.of(filler);
+            }
+            testOpeningSet(results, attemptLo, attemptHi, geometry, deep, attemptIndex, targetItem,
+                    maxResults, floorBreaks, actualOpenings);
+            return;
+        }
+
+        for (int i = start; i <= relevantOpenings.size() - remaining; i++) {
+            openings.add(relevantOpenings.get(i));
+            enumerateRelevantOpenings(results, attemptLo, attemptHi, geometry, deep, attemptIndex, targetItem,
+                    maxResults, openingLimit, relevantOpenings, filler, i + 1, remaining - 1, floorBreaks, openings);
+            openings.remove(openings.size() - 1);
             if (results.size() >= maxResults) return;
         }
+    }
+
+    private void testOpeningSet(List<DungeonLootBlueprint> results,
+                                long attemptLo, long attemptHi, AttemptGeometry geometry,
+                                boolean deep, int attemptIndex, String targetItem, int maxResults,
+                                List<Cell> floorBreaks, List<Cell> openings) {
+        if (results.size() >= maxResults) return;
+        SimulationResult sim = simulateLayout(attemptLo, attemptHi, geometry, floorBreaks, openings);
+        if (sim.firstLootSeed != 0L && SimpleDungeonLootSimulator.contains(sim.firstLootSeed, targetItem)) {
+            results.add(toBlueprint(geometry, deep, attemptIndex, 1, sim, floorBreaks, openings));
+        } else if (sim.secondLootSeed != 0L && SimpleDungeonLootSimulator.contains(sim.secondLootSeed, targetItem)) {
+            results.add(toBlueprint(geometry, deep, attemptIndex, 2, sim, floorBreaks, openings));
+        }
+    }
+
+    private List<Cell> findRelevantOpenings(long attemptLo, long attemptHi, AttemptGeometry geometry, List<Cell> floorBreaks) {
+        Set<Long> keys = new HashSet<>();
+        List<Cell> relevant = new ArrayList<>();
+        collectRelevantOpenings(keys, relevant, attemptLo, attemptHi, geometry, floorBreaks, -1);
+        for (int firstSuccessAttempt = 0; firstSuccessAttempt < 3; firstSuccessAttempt++) {
+            collectRelevantOpenings(keys, relevant, attemptLo, attemptHi, geometry, floorBreaks, firstSuccessAttempt);
+        }
+        return relevant;
+    }
+
+    private void collectRelevantOpenings(Set<Long> keys, List<Cell> relevant,
+                                         long attemptLo, long attemptHi, AttemptGeometry geometry,
+                                         List<Cell> floorBreaks, int firstSuccessAttempt) {
+        WorldgenRandom rng = new WorldgenRandom(new XoroshiroRandomSource(attemptLo, attemptHi));
+        rng.nextInt(2);
+        rng.nextInt(2);
+        buildPostShellState(geometry, toKeySet(floorBreaks), Set.of(), rng);
+
+        int attemptsToRead = firstSuccessAttempt < 0 ? 6 : firstSuccessAttempt + 1;
+        for (int i = 0; i < attemptsToRead; i++) {
+            addAdjacentWallOpenings(keys, relevant, geometry,
+                    rng.nextInt(geometry.sizeX * 2 + 1) - geometry.sizeX,
+                    rng.nextInt(geometry.sizeZ * 2 + 1) - geometry.sizeZ);
+        }
+        if (firstSuccessAttempt >= 0) {
+            rng.nextLong();
+            for (int i = 0; i < 3; i++) {
+                addAdjacentWallOpenings(keys, relevant, geometry,
+                        rng.nextInt(geometry.sizeX * 2 + 1) - geometry.sizeX,
+                        rng.nextInt(geometry.sizeZ * 2 + 1) - geometry.sizeZ);
+            }
+        }
+    }
+
+    private void addAdjacentWallOpenings(Set<Long> keys, List<Cell> relevant, AttemptGeometry geometry, int dx, int dz) {
+        addWallOpening(keys, relevant, geometry, dx + 1, dz);
+        addWallOpening(keys, relevant, geometry, dx - 1, dz);
+        addWallOpening(keys, relevant, geometry, dx, dz + 1);
+        addWallOpening(keys, relevant, geometry, dx, dz - 1);
+    }
+
+    private void addWallOpening(Set<Long> keys, List<Cell> relevant, AttemptGeometry geometry, int dx, int dz) {
+        if (!isWall(geometry, dx, dz)) return;
+        long key = Cell.key(dx, dz);
+        if (keys.add(key)) {
+            relevant.add(new Cell(dx, dz));
+        }
+    }
+
+    private Cell findFillerOpening(AttemptGeometry geometry, List<Cell> relevantOpenings) {
+        Set<Long> relevant = toKeySet(relevantOpenings);
+        for (Cell cell : geometry.wallCells) {
+            if (!relevant.contains(cell.key())) {
+                return cell;
+            }
+        }
+        return geometry.wallCells.isEmpty() ? null : geometry.wallCells.get(0);
     }
 
     private SimulationResult simulateLayout(long attemptLo, long attemptHi, AttemptGeometry geometry,
@@ -148,21 +232,10 @@ public class DungeonLootForcer {
             return new SimulationResult();
         }
 
-        Set<Long> floorAir = toKeySet(floorBreaks);
-        Set<Long> forcedSolid = toKeySet(blockers);
+        Set<Long> supportAir = toKeySet(floorBreaks);
+        Set<Long> wallOpenings = toKeySet(blockers);
         Set<Long> generatedChests = new HashSet<>();
-
-        for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
-            for (int dy = 3; dy >= -1; dy--) {
-                for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
-                    boolean shell = dx == -geometry.sizeX - 1 || dy == -1 || dz == -geometry.sizeZ - 1
-                            || dx == geometry.sizeX + 1 || dy == 4 || dz == geometry.sizeZ + 1;
-                    if (shell && dy == -1 && !floorAir.contains(Cell.key(dx, dz))) {
-                        rng.nextInt(4);
-                    }
-                }
-            }
-        }
+        boolean[][][] solid = buildPostShellState(geometry, supportAir, wallOpenings, rng);
 
         SimulationResult result = new SimulationResult();
         int placed = 0;
@@ -171,10 +244,10 @@ public class DungeonLootForcer {
                 int cx = rng.nextInt(geometry.sizeX * 2 + 1) - geometry.sizeX;
                 int cz = rng.nextInt(geometry.sizeZ * 2 + 1) - geometry.sizeZ;
                 long key = Cell.key(cx, cz);
-                if (generatedChests.contains(key) || forcedSolid.contains(key)) {
+                if (generatedChests.contains(key) || isSolid(solid, geometry, cx, 0, cz)) {
                     continue;
                 }
-                if (wallCount(cx, cz, geometry, forcedSolid) == 1) {
+                if (wallCount(cx, cz, geometry, solid) == 1) {
                     generatedChests.add(key);
                     long lootSeed = rng.nextLong();
                     placed++;
@@ -190,21 +263,75 @@ public class DungeonLootForcer {
         return result;
     }
 
-    private int wallCount(int dx, int dz, AttemptGeometry geometry, Set<Long> forcedSolid) {
+    private boolean[][][] buildPostShellState(AttemptGeometry geometry, Set<Long> supportAir, Set<Long> wallOpenings,
+                                              WorldgenRandom rng) {
+        int xLen = geometry.sizeX * 2 + 3;
+        int zLen = geometry.sizeZ * 2 + 3;
+        boolean[][][] solid = new boolean[xLen][7][zLen];
+
+        for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
+            for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
+                setSolid(solid, geometry, dx, -2, dz, !supportAir.contains(Cell.key(dx, dz)));
+                setSolid(solid, geometry, dx, -1, dz, true);
+                setSolid(solid, geometry, dx, 4, dz, true);
+
+                boolean wall = isWall(geometry, dx, dz);
+                if (wall) {
+                    boolean opening = wallOpenings.contains(Cell.key(dx, dz));
+                    for (int dy = 0; dy <= 3; dy++) {
+                        setSolid(solid, geometry, dx, dy, dz, !opening || dy >= 2);
+                    }
+                }
+            }
+        }
+
+        for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
+            for (int dy = 3; dy >= -1; dy--) {
+                for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
+                    boolean shell = isWall(geometry, dx, dz) || dy == -1 || dy == 4;
+                    if (shell) {
+                        if (!isSolid(solid, geometry, dx, dy - 1, dz)) {
+                            setSolid(solid, geometry, dx, dy, dz, false);
+                        } else if (isSolid(solid, geometry, dx, dy, dz)) {
+                            if (dy == -1) {
+                                rng.nextInt(4);
+                            }
+                            setSolid(solid, geometry, dx, dy, dz, true);
+                        }
+                    } else {
+                        setSolid(solid, geometry, dx, dy, dz, false);
+                    }
+                }
+            }
+        }
+        return solid;
+    }
+
+    private int wallCount(int dx, int dz, AttemptGeometry geometry, boolean[][][] solid) {
         int count = 0;
-        if (isSolidAtChestY(dx + 1, dz, geometry, forcedSolid)) count++;
-        if (isSolidAtChestY(dx - 1, dz, geometry, forcedSolid)) count++;
-        if (isSolidAtChestY(dx, dz + 1, geometry, forcedSolid)) count++;
-        if (isSolidAtChestY(dx, dz - 1, geometry, forcedSolid)) count++;
+        if (isSolid(solid, geometry, dx + 1, 0, dz)) count++;
+        if (isSolid(solid, geometry, dx - 1, 0, dz)) count++;
+        if (isSolid(solid, geometry, dx, 0, dz + 1)) count++;
+        if (isSolid(solid, geometry, dx, 0, dz - 1)) count++;
         return count;
     }
 
-    private boolean isSolidAtChestY(int dx, int dz, AttemptGeometry geometry, Set<Long> forcedSolid) {
-        if (dx == -geometry.sizeX - 1 || dx == geometry.sizeX + 1
-                || dz == -geometry.sizeZ - 1 || dz == geometry.sizeZ + 1) {
-            return true;
+    private boolean isWall(AttemptGeometry geometry, int dx, int dz) {
+        return dx == -geometry.sizeX - 1 || dx == geometry.sizeX + 1
+                || dz == -geometry.sizeZ - 1 || dz == geometry.sizeZ + 1;
+    }
+
+    private boolean isSolid(boolean[][][] solid, AttemptGeometry geometry, int dx, int dy, int dz) {
+        if (dy < -2 || dy > 4 || dx < -geometry.sizeX - 1 || dx > geometry.sizeX + 1
+                || dz < -geometry.sizeZ - 1 || dz > geometry.sizeZ + 1) {
+            return false;
         }
-        return forcedSolid.contains(Cell.key(dx, dz));
+        return solid[dx + geometry.sizeX + 1][dy + 2][dz + geometry.sizeZ + 1];
+    }
+
+    private void setSolid(boolean[][][] solid, AttemptGeometry geometry, int dx, int dy, int dz, boolean value) {
+        if (dy < -2 || dy > 4) return;
+        solid[dx + geometry.sizeX + 1][dy + 2][dz + geometry.sizeZ + 1] = value;
     }
 
     private DungeonLootBlueprint toBlueprint(AttemptGeometry geometry, boolean deep, int attemptIndex,
@@ -226,12 +353,13 @@ public class DungeonLootForcer {
         for (Cell cell : geometry.wallCells) {
             blueprint.wallBlocks.add(worldPos(geometry, cell, 0));
         }
-        addRequiredPlaceBlocks(blueprint, geometry, floorBreaks);
+        addRequiredPlaceBlocks(blueprint, geometry, blockers);
         for (Cell cell : floorBreaks) {
-            blueprint.floorBreaks.add(worldPos(geometry, cell, -1));
+            blueprint.floorBreaks.add(worldPos(geometry, cell, -2));
         }
         for (Cell cell : blockers) {
-            blueprint.chestBlockers.add(worldPos(geometry, cell, 0));
+            blueprint.floorBreaks.add(worldPos(geometry, cell, 0));
+            blueprint.floorBreaks.add(worldPos(geometry, cell, 1));
         }
         for (Cell cell : sim.chests) {
             blueprint.chestPositions.add(worldPos(geometry, cell, 0));
@@ -239,25 +367,24 @@ public class DungeonLootForcer {
         return blueprint;
     }
 
-    private void addRequiredPlaceBlocks(DungeonLootBlueprint blueprint, AttemptGeometry geometry, List<Cell> floorBreaks) {
-        Set<Long> floorAir = toKeySet(floorBreaks);
+    private void addRequiredPlaceBlocks(DungeonLootBlueprint blueprint, AttemptGeometry geometry, List<Cell> wallOpenings) {
+        Set<Long> openingSet = toKeySet(wallOpenings);
         for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
             for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
-                if (!floorAir.contains(Cell.key(dx, dz))) {
-                    blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), -1));
-                }
+                blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), -1));
                 blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), 4));
 
                 boolean wall = dx == -geometry.sizeX - 1 || dx == geometry.sizeX + 1
                         || dz == -geometry.sizeZ - 1 || dz == geometry.sizeZ + 1;
                 if (wall) {
                     for (int dy = 0; dy <= 3; dy++) {
+                        if (openingSet.contains(Cell.key(dx, dz)) && dy <= 1) {
+                            continue;
+                        }
                         int wx = geometry.originX + dx;
                         int wy = geometry.originY + dy;
                         int wz = geometry.originZ + dz;
-                        if (isSolid(wx, wy, wz)) {
-                            blueprint.requiredPlaceBlocks.add(new int[]{wx, wy, wz});
-                        }
+                        blueprint.requiredPlaceBlocks.add(new int[]{wx, wy, wz});
                     }
                 }
             }

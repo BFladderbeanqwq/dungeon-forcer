@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "hackerrouter.mineshaftforcer.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"MineShaftCorridorAccessor",
+		"MineShaftCorridorCaptureMixin",
+		"Xoroshiro128PlusPlusAccessor",
+		"XoroshiroRandomSourceAccessor"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

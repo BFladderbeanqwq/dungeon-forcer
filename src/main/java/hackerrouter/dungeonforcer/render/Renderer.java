@@ -18,6 +18,8 @@ public class Renderer {
     private static final int BREAK_FILL   = ARGB.color(100, 255, 165, 0);
     private static final int REF_STROKE = ARGB.color(95, 180, 180, 180);
     private static final int REF_FILL   = ARGB.color(28, 180, 180, 180);
+    private static final int TARGET_STROKE = ARGB.color(240, 255, 255, 255);
+    private static final int TARGET_FILL = ARGB.color(96, 255, 255, 255);
 
     public static void init() {
         LevelRenderEvents.BEFORE_GIZMOS.register(Renderer::onWorldRender);
@@ -97,6 +99,8 @@ public class Renderer {
                 g(Gizmos.cuboid(blockBox, GizmoStyle.strokeAndFill(BREAK_STROKE, 1.5f, BREAK_FILL)));
             } else if (action == Spawner.ACTION_REFERENCE) {
                 g(Gizmos.cuboid(blockBox, GizmoStyle.strokeAndFill(REF_STROKE, 0.7f, REF_FILL)));
+            } else if (action == Spawner.ACTION_TARGET) {
+                g(Gizmos.cuboid(blockBox, GizmoStyle.strokeAndFill(TARGET_STROKE, 2.2f, TARGET_FILL)));
             }
         }
     }

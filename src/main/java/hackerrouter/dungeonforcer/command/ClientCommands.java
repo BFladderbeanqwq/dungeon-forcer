@@ -62,25 +62,25 @@ public class ClientCommands {
                                 .executes(ctx -> showFeatureIndex(ctx.getSource())))
                         .then(literal("loot")
                                 .executes(ctx -> runLootSearch(ctx.getSource(),
-                                        "minecraft:enchanted_golden_apple", 10, 1, 2))
+                                        "minecraft:enchanted_golden_apple", 10, 1, 5))
                                 .then(argument("targetItem", StringArgumentType.word())
                                         .executes(ctx -> runLootSearch(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "targetItem"), 10, 1, 2))
+                                                StringArgumentType.getString(ctx, "targetItem"), 10, 1, 5))
                                         .then(argument("maxResults", IntegerArgumentType.integer(1, 50))
                                                 .executes(ctx -> runLootSearch(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "targetItem"),
-                                                        IntegerArgumentType.getInteger(ctx, "maxResults"), 1, 2))
+                                                        IntegerArgumentType.getInteger(ctx, "maxResults"), 1, 5))
                                                 .then(argument("maxFloorBreaks", IntegerArgumentType.integer(0, 8))
                                                         .executes(ctx -> runLootSearch(ctx.getSource(),
                                                                 StringArgumentType.getString(ctx, "targetItem"),
                                                                 IntegerArgumentType.getInteger(ctx, "maxResults"),
                                                                 IntegerArgumentType.getInteger(ctx, "maxFloorBreaks"), 2))
-                                                        .then(argument("maxChestBlockers", IntegerArgumentType.integer(0, 8))
+                                                        .then(argument("maxWallOpenings", IntegerArgumentType.integer(1, 5))
                                                                 .executes(ctx -> runLootSearch(ctx.getSource(),
                                                                         StringArgumentType.getString(ctx, "targetItem"),
                                                                         IntegerArgumentType.getInteger(ctx, "maxResults"),
                                                                         IntegerArgumentType.getInteger(ctx, "maxFloorBreaks"),
-                                                                        IntegerArgumentType.getInteger(ctx, "maxChestBlockers"))))))))
+                                                                        IntegerArgumentType.getInteger(ctx, "maxWallOpenings"))))))))
                         .then(literal("lootnext")
                                 .executes(ctx -> nextLootResult(ctx.getSource())))
                         .then(literal("goodchunkfinder")
@@ -177,7 +177,7 @@ public class ClientCommands {
         int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
 
         Chat.send("搂6[DungeonForcer-v2] 搂fSearching loot seed in chunk (" + chunkPos.x() + ", " + chunkPos.z() + ")...");
-        Chat.send(String.format("搂7target=%s maxResults=%d floorBreaks<=%d blockers<=%d",
+        Chat.send(String.format("搂7target=%s maxResults=%d supportBreaks<=%d wallOpenings<=%d",
                 targetItem, maxResults, maxFloorBreaks, maxChestBlockers));
 
         DungeonLootForcer forcer = new DungeonLootForcer();
@@ -216,12 +216,11 @@ public class ClientCommands {
                 b.isDeep ? " 搂8[DEEP]" : ""));
         Chat.send(String.format("  搂7lootSeed[1]=%d lootSeed[2]=%d spawner=%s",
                 b.firstChestLootSeed, b.secondChestLootSeed, b.spawnerType));
-        Chat.send(String.format("  搂7requiredPlace=%d floorBreak=%d chestBlockers=%d chestPos=%d",
+        Chat.send(String.format("  搂7requiredPlace=%d breaks=%d chestPos=%d",
                 b.requiredPlaceBlocks.size() + b.chestBlockers.size(),
-                b.floorBreaks.size(), b.chestBlockers.size(), b.chestPositions.size()));
+                b.floorBreaks.size(), b.chestPositions.size()));
         sendPositions("required shell", b.requiredPlaceBlocks);
-        sendPositions("floor breaks", b.floorBreaks);
-        sendPositions("chest blockers", b.chestBlockers);
+        sendPositions("break support/openings", b.floorBreaks);
         sendPositions("chests", b.chestPositions);
 
         RenderQueue.clear();

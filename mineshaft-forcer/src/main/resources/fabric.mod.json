@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "mineshaftforcer",
+	"version": "${version}",
+	"name": "Mineshaft-Forcer",
+	"description": "Mineshaft loot manipulation tooling for Minecraft 26.1.1.",
+	"authors": [
+		"HackerRouter"
+	],
+	"contact": {
+		"sources": "https://github.com/HackerRouter/dungeon-forcer"
+	},
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"hackerrouter.mineshaftforcer.MineshaftForcerMain"
+		]
+	},
+	"mixins": [
+		"mineshaftforcer.mixins.json"
+	],
+	"license": "MIT",
+	"depends": {
+		"fabricloader": ">=0.19.2",
+		"minecraft": "~26.1.1",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

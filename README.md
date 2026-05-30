@@ -36,6 +36,72 @@ The built mod jar is written to:
 build/libs/dungeonforcer-2.0.0.jar
 ```
 
+## Mineshaft-Forcer Subproject
+
+This repository also contains the standalone `mineshaft-forcer` Fabric client mod. It targets Minecraft `26.1.1`, Fabric Loader `0.19.2`, Fabric API `0.145.4+26.1.1`, Mojmap, and Java release `25`.
+
+Build only Mineshaft-Forcer with:
+
+```powershell
+.\gradlew.bat :mineshaft-forcer:build
+```
+
+The module is intentionally separate from Dungeon Forcer. Its mod id is `mineshaftforcer`, and its main command is:
+
+```text
+/mineshaftforcer
+```
+
+### Mineshaft Runtime Checks
+
+Use these commands in an integrated singleplayer world:
+
+```text
+/mineshaftforcer debug render_test
+/mineshaftforcer render status
+/mineshaftforcer render clear
+```
+
+`debug render_test` queues three nearby Gizmo boxes so you can confirm the blueprint renderer is visible before searching.
+
+### Mineshaft Corridor Capture
+
+Mineshaft-Forcer injects into vanilla `MineShaftCorridor.postProcess` and records the corridor bounding box, orientation, section count, corridor flags, current `XoroshiroRandomSource` state, and a pre-generation snapshot of the corridor's local block matrix plus `OCEAN_FLOOR_WG` heights. Generate or approach new chunks in singleplayer, then run:
+
+```text
+/mineshaftforcer capture list
+/mineshaftforcer capture latest
+/mineshaftforcer capture clear
+```
+
+### Mineshaft Loot Evaluation And Preview
+
+Evaluate a raw abandoned-mineshaft loot seed through the vanilla loot table engine:
+
+```text
+/mineshaftforcer eval abandoned_mineshaft <lootSeed> <itemId>
+```
+
+Search manually from known corridor parameters:
+
+```text
+/mineshaftforcer search corridor <sections> <seedLo> <seedHi> <maxMutations> <maxResults> <itemId>
+```
+
+Search and render a blueprint at a known corridor bounding-box origin:
+
+```text
+/mineshaftforcer search corridor_preview <originX> <originY> <originZ> <orientation> <sections> <seedLo> <seedHi> <maxMutations> <itemId>
+```
+
+Search and render from a captured corridor id:
+
+```text
+/mineshaftforcer search corridor_preview_capture <captureId> <maxMutations> <itemId>
+```
+
+The captured preview path uses that pre-generation snapshot, then searches floor-removal, support-roof, and cobweb-heightmap short-circuit mutations. Matching results are evaluated with vanilla `BuiltInLootTables.ABANDONED_MINESHAFT` and rendered as place/break/target blueprint boxes.
+
 ## Basic Setup
 
 Install the generated jar as a Fabric client mod. Join the target world, stand in or near the chunk you want to search, then run commands from chat.
@@ -64,7 +130,7 @@ This searches the current player chunk for `minecraft:enchanted_golden_apple` us
 
 - `maxResults = 10`
 - `maxFloorBreaks = 1`
-- `maxChestBlockers = 2`
+- `maxWallOpenings = 5`
 
 ### Search For A Custom Item
 
@@ -81,23 +147,23 @@ Example:
 ### Search With Custom Limits
 
 ```text
-/dungeonforcer loot <targetItem> <maxResults> <maxFloorBreaks> <maxChestBlockers>
+/dungeonforcer loot <targetItem> <maxResults> <maxSupportBreaks> <maxWallOpenings>
 ```
 
 Example:
 
 ```text
-/dungeonforcer loot minecraft:enchanted_golden_apple 20 2 3
+/dungeonforcer loot minecraft:enchanted_golden_apple 20 2 5
 ```
 
 Parameter meanings:
 
 - `targetItem`: item id to search for in the generated simple dungeon loot.
 - `maxResults`: maximum number of blueprints to return.
-- `maxFloorBreaks`: maximum number of dungeon floor blocks at `dy == -1` to pre-break.
-- `maxChestBlockers`: maximum number of chest-level blocker blocks to pre-place.
+- `maxSupportBreaks`: maximum number of support blocks at `dy == -2` to pre-break. The floor at `dy == -1` must stay solid for the vanilla pre-check.
+- `maxWallOpenings`: maximum number of wall openings to enumerate. Vanilla requires `1..5` openings.
 
-Higher `maxFloorBreaks` and `maxChestBlockers` explore a larger search space and can be much slower.
+Higher `maxSupportBreaks` and `maxWallOpenings` explore a larger search space and can be much slower.
 
 ### Show Next Loot Result
 
@@ -116,15 +182,14 @@ A successful v2 result prints:
 - first and second chest loot seeds;
 - which chest hit the target item;
 - required shell coordinates;
-- floor break coordinates;
-- chest blocker coordinates;
+- support break and wall opening coordinates;
 - generated chest coordinates.
 
 The renderer highlights:
 
 - gray blocks: dungeon floor, ceiling, and wall-ring reference;
-- blue blocks: required shell and chest blocker blocks to pre-place;
-- orange blocks: blocks to break;
+- blue blocks: required shell blocks to pre-place;
+- orange blocks: support blocks or wall opening blocks to break;
 - dungeon bounds and spawner position.
 
 Apply the printed blueprint before regenerating the chunk or triggering dungeon placement.

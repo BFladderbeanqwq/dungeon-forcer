@@ -20,6 +20,7 @@ public class Spawner {
     public static final int ACTION_PLACE = 1;
     public static final int ACTION_BREAK = -1;
     public static final int ACTION_REFERENCE = 0;
+    public static final int ACTION_TARGET = 2;
 
     public Spawner() {
         this.blockModifications = new ArrayList<>();

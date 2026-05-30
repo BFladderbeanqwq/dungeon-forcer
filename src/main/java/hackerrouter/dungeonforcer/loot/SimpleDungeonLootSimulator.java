@@ -66,25 +66,37 @@ public final class SimpleDungeonLootSimulator {
     }
 
     public static boolean contains(long lootTableSeed, String itemId) {
+        if (DEFAULT_TARGET.equals(itemId)) {
+            return containsEnchantedGoldenAppleReliably(lootTableSeed);
+        }
         return simulate(lootTableSeed).contains(itemId);
     }
 
-    private static void rollPool(LegacyRandomSource random, Entry[] entries, int rolls, List<ItemRoll> items) {
-        int totalWeight = 0;
-        for (Entry entry : entries) {
-            totalWeight += entry.weight;
-        }
+    private static boolean containsEnchantedGoldenAppleReliably(long lootTableSeed) {
+        LegacyRandomSource random = new LegacyRandomSource(lootTableSeed);
+        int rolls = nextInclusive(random, 1, 3);
+        int totalWeight = totalWeight(POOL_1);
 
         for (int i = 0; i < rolls; i++) {
-            int choice = random.nextInt(totalWeight);
-            Entry selected = entries[entries.length - 1];
-            for (Entry entry : entries) {
-                choice -= entry.weight;
-                if (choice < 0) {
-                    selected = entry;
-                    break;
-                }
+            Entry selected = selectEntry(random, POOL_1, totalWeight);
+            if (DEFAULT_TARGET.equals(selected.itemId)) {
+                return true;
             }
+            if (selected.hasCountRange) {
+                nextInclusive(random, selected.minCount, selected.maxCount);
+            }
+            if (selected.enchantRandomly) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static void rollPool(LegacyRandomSource random, Entry[] entries, int rolls, List<ItemRoll> items) {
+        int totalWeight = totalWeight(entries);
+
+        for (int i = 0; i < rolls; i++) {
+            Entry selected = selectEntry(random, entries, totalWeight);
 
             int count = selected.hasCountRange ? nextInclusive(random, selected.minCount, selected.maxCount) : 1;
             if (selected.enchantRandomly) {
@@ -92,6 +104,27 @@ public final class SimpleDungeonLootSimulator {
             }
             items.add(new ItemRoll(selected.itemId, count));
         }
+    }
+
+    private static int totalWeight(Entry[] entries) {
+        int totalWeight = 0;
+        for (Entry entry : entries) {
+            totalWeight += entry.weight;
+        }
+        return totalWeight;
+    }
+
+    private static Entry selectEntry(LegacyRandomSource random, Entry[] entries, int totalWeight) {
+        int choice = random.nextInt(totalWeight);
+        Entry selected = entries[entries.length - 1];
+        for (Entry entry : entries) {
+            choice -= entry.weight;
+            if (choice < 0) {
+                selected = entry;
+                break;
+            }
+        }
+        return selected;
     }
 
     private static int nextInclusive(LegacyRandomSource random, int minInclusive, int maxInclusive) {
