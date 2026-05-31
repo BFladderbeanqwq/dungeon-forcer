@@ -19,6 +19,7 @@ public class DungeonLootBlueprint {
     public final List<int[]> wallBlocks = new ArrayList<>();
     public final List<int[]> requiredPlaceBlocks = new ArrayList<>();
     public final List<int[]> floorBreaks = new ArrayList<>();
+    public final List<int[]> cleanupBreaks = new ArrayList<>();
     public final List<int[]> chestBlockers = new ArrayList<>();
     public final List<int[]> chestPositions = new ArrayList<>();
 
@@ -32,6 +33,9 @@ public class DungeonLootBlueprint {
         }
         for (int[] pos : floorBreaks) {
             spawner.blockModifications.add(new int[]{pos[0], pos[1], pos[2], Spawner.ACTION_BREAK});
+        }
+        for (int[] pos : cleanupBreaks) {
+            spawner.blockModifications.add(new int[]{pos[0], pos[1], pos[2], Spawner.ACTION_CLEANUP_BREAK});
         }
         return spawner;
     }

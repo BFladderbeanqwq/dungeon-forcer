@@ -22,6 +22,7 @@ public class Spawner {
     public static final int ACTION_REFERENCE = 0;
     public static final int ACTION_TARGET = 2;
     public static final int ACTION_CHEST_CONTROL = 3;
+    public static final int ACTION_CLEANUP_BREAK = -2;
 
     public Spawner() {
         this.blockModifications = new ArrayList<>();

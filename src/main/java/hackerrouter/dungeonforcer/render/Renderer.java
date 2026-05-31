@@ -41,6 +41,7 @@ public class Renderer {
     private static final int REF_FILL = ARGB.color(28, 180, 180, 180);
     private static final int TARGET_FILL = ARGB.color(96, 255, 255, 255);
     private static final int CHEST_CONTROL_FILL = ARGB.color(120, 55, 255, 135);
+    private static final int CLEANUP_BREAK_FILL = ARGB.color(115, 255, 70, 90);
     private static final float[][][] FACE_VERTS = {
             {{0, 0, 1}, {0, 0, 0}, {1, 0, 0}, {1, 0, 1}},
             {{0, 1, 0}, {0, 1, 1}, {1, 1, 1}, {1, 1, 0}},
@@ -107,14 +108,17 @@ public class Renderer {
         var level = Minecraft.getInstance().level;
         context.submitNodeCollector().submitCustomGeometry(context.poseStack(), SEE_THROUGH_DEBUG_QUADS, (pose, buffer) -> {
             Map<Long, Integer> blockActions = new HashMap<>();
-            for (int[] mod : spawner.blockModifications) {
-                blockActions.put(BlockPos.asLong(mod[0], mod[1], mod[2]), mod[3]);
-            }
             BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+            for (int[] mod : spawner.blockModifications) {
+                mutablePos.set(mod[0], mod[1], mod[2]);
+                if (shouldRender(mod[3], level, mutablePos)) {
+                    blockActions.put(BlockPos.asLong(mod[0], mod[1], mod[2]), mod[3]);
+                }
+            }
             for (int[] mod : spawner.blockModifications) {
                 int wx = mod[0], wy = mod[1], wz = mod[2], action = mod[3];
                 mutablePos.set(wx, wy, wz);
-                if (action == Spawner.ACTION_BREAK && level != null && level.getBlockState(mutablePos).isAir()) {
+                if (!shouldRender(action, level, mutablePos)) {
                     continue;
                 }
                 int fillColor = fillColor(action);
@@ -141,12 +145,25 @@ public class Renderer {
         });
     }
 
+    private static boolean shouldRender(int action, net.minecraft.client.multiplayer.ClientLevel level,
+                                        BlockPos.MutableBlockPos pos) {
+        if (level == null) return true;
+        if (action == Spawner.ACTION_BREAK || action == Spawner.ACTION_CLEANUP_BREAK) {
+            return !level.getBlockState(pos).isAir();
+        }
+        if (action == Spawner.ACTION_PLACE || action == Spawner.ACTION_CHEST_CONTROL) {
+            return !level.getBlockState(pos).isSolid();
+        }
+        return true;
+    }
+
     private static int fillColor(int action) {
         if (action == Spawner.ACTION_PLACE) return PLACE_FILL;
         if (action == Spawner.ACTION_BREAK) return BREAK_FILL;
         if (action == Spawner.ACTION_REFERENCE) return REF_FILL;
         if (action == Spawner.ACTION_TARGET) return TARGET_FILL;
         if (action == Spawner.ACTION_CHEST_CONTROL) return CHEST_CONTROL_FILL;
+        if (action == Spawner.ACTION_CLEANUP_BREAK) return CLEANUP_BREAK_FILL;
         return 0;
     }
 

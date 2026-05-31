@@ -176,8 +176,8 @@ public class ClientCommands {
         int normalIndex = FeatureIndexHelper.getNormalFeatureIndex();
         int deepIndex = FeatureIndexHelper.getDeepFeatureIndex();
 
-        Chat.send("搂6[DungeonForcer-v2] 搂fSearching loot seed in chunk (" + chunkPos.x() + ", " + chunkPos.z() + ")...");
-        Chat.send(String.format("搂7target=%s maxResults=%d supportBreaks<=%d wallOpenings<=%d",
+        Chat.send("§6[DungeonForcer-v2] §fSearching loot seed in chunk (" + chunkPos.x() + ", " + chunkPos.z() + ")...");
+        Chat.send(String.format("§7target=%s maxResults=%d supportBreaks<=%d wallOpenings<=%d",
                 targetItem, maxResults, maxFloorBreaks, maxChestBlockers));
 
         DungeonLootForcer forcer = new DungeonLootForcer();
@@ -191,7 +191,7 @@ public class ClientCommands {
 
         if (currentLootResults.isEmpty()) {
             RenderQueue.clear();
-            Chat.send("搂c[DungeonForcer-v2] 搂fNo loot blueprint found with current limits.");
+            Chat.send("§c[DungeonForcer-v2] §fNo loot blueprint found with current limits.");
         } else {
             showCurrentLootResult();
         }
@@ -201,7 +201,7 @@ public class ClientCommands {
 
     private static int nextLootResult(FabricClientCommandSource source) {
         if (currentLootResults == null || currentLootResults.isEmpty()) {
-            Chat.send("搂c[DungeonForcer-v2] 搂fNo loot result. Try /dungeonforcer loot first.");
+            Chat.send("§c[DungeonForcer-v2] §fNo loot result. Try /dungeonforcer loot first.");
             return 0;
         }
         currentLootResultIndex = (currentLootResultIndex + 1) % currentLootResults.size();
@@ -211,18 +211,19 @@ public class ClientCommands {
 
     private static void showCurrentLootResult() {
         DungeonLootBlueprint b = currentLootResults.get(currentLootResultIndex);
-        Chat.send(String.format("搂6[DungeonForcer-v2] 搂fLoot result %d/%d @ (%d, %d, %d) size=%dx%d attempt=%d hitChest=%d%s",
+        Chat.send(String.format("§6[DungeonForcer-v2] §fLoot result %d/%d @ (%d, %d, %d) size=%dx%d attempt=%d hitChest=%d%s",
                 currentLootResultIndex + 1, currentLootResults.size(),
                 b.originX, b.originY, b.originZ, b.sizeX, b.sizeZ, b.attemptIndex, b.hitChestIndex,
-                b.isDeep ? " 搂8[DEEP]" : ""));
-        Chat.send(String.format("  搂7lootSeed[1]=%d lootSeed[2]=%d spawner=%s",
+                b.isDeep ? " §8[DEEP]" : ""));
+        Chat.send(String.format("  §7lootSeed[1]=%d lootSeed[2]=%d spawner=%s",
                 b.firstChestLootSeed, b.secondChestLootSeed, b.spawnerType));
-        Chat.send(String.format("  搂7requiredPlace=%d breaks=%d chestPos=%d",
+        Chat.send(String.format("  §7requiredPlace=%d controlBreaks=%d cleanupBreaks=%d chestPos=%d",
                 b.requiredPlaceBlocks.size() + b.chestBlockers.size(),
-                b.floorBreaks.size(), b.chestPositions.size()));
+                b.floorBreaks.size(), b.cleanupBreaks.size(), b.chestPositions.size()));
         sendPositions("required shell", b.requiredPlaceBlocks);
         sendPositions("chest controls", b.chestBlockers);
         sendPositions("break support/openings", b.floorBreaks);
+        sendPositions("cleanup only", b.cleanupBreaks);
         sendPositions("chests", b.chestPositions);
 
         RenderQueue.clear();
@@ -231,12 +232,12 @@ public class ClientCommands {
 
     private static void sendPositions(String label, List<int[]> positions) {
         if (positions.isEmpty()) {
-            Chat.send("  搂8" + label + ": none");
+            Chat.send("  §8" + label + ": none");
             return;
         }
         int perLine = 6;
         for (int start = 0; start < positions.size(); start += perLine) {
-            StringBuilder sb = new StringBuilder("  搂7").append(label);
+            StringBuilder sb = new StringBuilder("  §7").append(label);
             if (positions.size() > perLine) {
                 sb.append(" ").append(start + 1).append("-").append(Math.min(start + perLine, positions.size()));
             }

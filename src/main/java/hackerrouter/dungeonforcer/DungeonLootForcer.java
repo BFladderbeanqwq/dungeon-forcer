@@ -528,6 +528,10 @@ public class DungeonLootForcer {
                         int wy = geometry.originY + dy;
                         blueprint.chestBlockers.add(new int[]{wx, wy, wz});
                     }
+                } else {
+                    for (int dy = 0; dy <= 3; dy++) {
+                        blueprint.cleanupBreaks.add(new int[]{wx, geometry.originY + dy, wz});
+                    }
                 }
             }
         }
