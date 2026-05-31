@@ -64,6 +64,10 @@ public class DungeonLootForcer {
             int sizeX = attemptRng.nextInt(2) + 2;
             int sizeZ = attemptRng.nextInt(2) + 2;
             AttemptGeometry geometry = buildGeometry(originX, py, originZ, sizeX, sizeZ);
+            if (!crossesSpawnerChunkBoundary(geometry) || !hasSolidInChunkFloorAndCeiling(geometry)) {
+                rng = attemptRng;
+                continue;
+            }
             enumerateFloorMasks(results, attemptLo, attemptHi, geometry, deep, attempt,
                     targetItem, maxResults, maxFloorBreaks, maxChestBlockers);
 
@@ -105,7 +109,7 @@ public class DungeonLootForcer {
                                        long attemptLo, long attemptHi, AttemptGeometry geometry,
                                        boolean deep, int attemptIndex, String targetItem, int maxResults,
                                        int maxChestBlockers, List<Cell> floorBreaks) {
-        int openingLimit = Math.min(Math.min(maxChestBlockers, 5), geometry.wallCells.size());
+        int openingLimit = Math.min(Math.min(maxChestBlockers, 5), geometry.externalWallCells.size());
         if (openingLimit < 1) return;
 
         List<Cell> relevantOpenings = findRelevantOpenings(attemptLo, attemptHi, geometry, floorBreaks);
@@ -206,7 +210,7 @@ public class DungeonLootForcer {
     }
 
     private void addWallOpening(Set<Long> keys, List<Cell> relevant, AttemptGeometry geometry, int dx, int dz) {
-        if (!isWall(geometry, dx, dz)) return;
+        if (!isWall(geometry, dx, dz) || !isOutsideSpawnerChunk(geometry.originX + dx, geometry.originZ + dz)) return;
         long key = Cell.key(dx, dz);
         if (keys.add(key)) {
             relevant.add(new Cell(dx, dz));
@@ -215,12 +219,12 @@ public class DungeonLootForcer {
 
     private Cell findFillerOpening(AttemptGeometry geometry, List<Cell> relevantOpenings) {
         Set<Long> relevant = toKeySet(relevantOpenings);
-        for (Cell cell : geometry.wallCells) {
+        for (Cell cell : geometry.externalWallCells) {
             if (!relevant.contains(cell.key())) {
                 return cell;
             }
         }
-        return geometry.wallCells.isEmpty() ? null : geometry.wallCells.get(0);
+        return geometry.externalWallCells.isEmpty() ? null : geometry.externalWallCells.get(0);
     }
 
     private SimulationResult simulateLayout(long attemptLo, long attemptHi, AttemptGeometry geometry,
@@ -400,16 +404,47 @@ public class DungeonLootForcer {
         for (int dx = -sizeX - 1; dx <= sizeX + 1; dx++) {
             for (int dz = -sizeZ - 1; dz <= sizeZ + 1; dz++) {
                 Cell cell = new Cell(dx, dz);
-                geometry.floorCells.add(cell);
+                if (isOutsideSpawnerChunk(originX + dx, originZ + dz)) {
+                    geometry.floorCells.add(cell);
+                }
                 boolean wall = dx == -sizeX - 1 || dx == sizeX + 1 || dz == -sizeZ - 1 || dz == sizeZ + 1;
                 if (wall) {
                     geometry.wallCells.add(cell);
+                    if (isOutsideSpawnerChunk(originX + dx, originZ + dz)) {
+                        geometry.externalWallCells.add(cell);
+                    }
                 } else {
                     geometry.blockerCells.add(cell);
                 }
             }
         }
         return geometry;
+    }
+
+    private boolean crossesSpawnerChunkBoundary(AttemptGeometry geometry) {
+        return geometry.originX - geometry.sizeX - 1 < chunkBlockX
+                || geometry.originX + geometry.sizeX + 1 > chunkBlockX + 15
+                || geometry.originZ - geometry.sizeZ - 1 < chunkBlockZ
+                || geometry.originZ + geometry.sizeZ + 1 > chunkBlockZ + 15;
+    }
+
+    private boolean hasSolidInChunkFloorAndCeiling(AttemptGeometry geometry) {
+        for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
+            for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
+                int wx = geometry.originX + dx;
+                int wz = geometry.originZ + dz;
+                if (isOutsideSpawnerChunk(wx, wz)) continue;
+                if (!isSolid(wx, geometry.originY - 1, wz) || !isSolid(wx, geometry.originY + 4, wz)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean isOutsideSpawnerChunk(int worldX, int worldZ) {
+        return worldX < chunkBlockX || worldX > chunkBlockX + 15
+                || worldZ < chunkBlockZ || worldZ > chunkBlockZ + 15;
     }
 
     private Set<Long> toKeySet(List<Cell> cells) {
@@ -458,6 +493,7 @@ public class DungeonLootForcer {
         final List<Cell> floorCells = new ArrayList<>();
         final List<Cell> blockerCells = new ArrayList<>();
         final List<Cell> wallCells = new ArrayList<>();
+        final List<Cell> externalWallCells = new ArrayList<>();
 
         AttemptGeometry(int originX, int originY, int originZ, int sizeX, int sizeZ) {
             this.originX = originX;

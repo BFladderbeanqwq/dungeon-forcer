@@ -46,11 +46,40 @@ Build only Mineshaft-Forcer with:
 .\gradlew.bat :mineshaft-forcer:build
 ```
 
+The built mod jar is written to:
+
+```text
+mineshaft-forcer/build/libs/mineshaft-forcer-0.1.0.jar
+```
+
 The module is intentionally separate from Dungeon Forcer. Its mod id is `mineshaftforcer`, and its main command is:
 
 ```text
 /mineshaftforcer
 ```
+
+### Mineshaft Quick Start
+
+If you want the shortest path that actually works in-game, use this flow:
+
+1. Build `mineshaft-forcer` and install `mineshaft-forcer/build/libs/mineshaft-forcer-0.1.0.jar` into your Fabric client `mods` folder.
+2. Launch Minecraft `26.1.1` with Fabric Loader `0.19.2` and Fabric API `0.145.4+26.1.1`.
+3. Open an integrated singleplayer world. `eval` and every `search` command require the integrated server; they do not work from a pure multiplayer client.
+4. Run `/mineshaftforcer` to confirm the client command is loaded.
+5. Run `/mineshaftforcer debug render_test` once. If you can see the three debug boxes, the preview renderer is working.
+6. Travel into unexplored terrain so abandoned mineshaft corridors generate. Capture happens when vanilla `MineShaftCorridor.postProcess` runs, so the recommended workflow is to trigger fresh corridor generation, not to stand in an old area.
+7. List captured corridors with `/mineshaftforcer capture list` and pick a capture id.
+8. Search that capture and render the first matching blueprint with `/mineshaftforcer search corridor_preview_capture <captureId> <maxMutations> <itemId>`.
+9. Apply the shown block changes in-world, or clear the preview with `/mineshaftforcer render clear`.
+
+Concrete example:
+
+```text
+/mineshaftforcer capture list
+/mineshaftforcer search corridor_preview_capture 3 2 minecraft:golden_apple
+```
+
+That is the main intended usage path. If you only want one command to remember, it is `capture list` followed by `search corridor_preview_capture`.
 
 ### Mineshaft Runtime Checks
 
@@ -74,6 +103,8 @@ Mineshaft-Forcer injects into vanilla `MineShaftCorridor.postProcess` and record
 /mineshaftforcer capture clear
 ```
 
+`capture list` prints entries like `#12 origin=(x, y, z) ... orientation=EAST sections=4 rails=false spider=false seedLo=... seedHi=...`. The `#12` part is the `captureId` you pass into `search corridor_preview_capture`.
+
 ### Mineshaft Loot Evaluation And Preview
 
 Evaluate a raw abandoned-mineshaft loot seed through the vanilla loot table engine:
@@ -82,11 +113,15 @@ Evaluate a raw abandoned-mineshaft loot seed through the vanilla loot table engi
 /mineshaftforcer eval abandoned_mineshaft <lootSeed> <itemId>
 ```
 
+Use this when you already have a loot seed and only want to check whether vanilla abandoned-mineshaft chest loot contains an item.
+
 Search manually from known corridor parameters:
 
 ```text
 /mineshaftforcer search corridor <sections> <seedLo> <seedHi> <maxMutations> <maxResults> <itemId>
 ```
+
+This is an advanced manual search. It does not use captured world geometry; it searches a synthetic corridor model with the given section count.
 
 Search and render a blueprint at a known corridor bounding-box origin:
 
@@ -94,11 +129,15 @@ Search and render a blueprint at a known corridor bounding-box origin:
 /mineshaftforcer search corridor_preview <originX> <originY> <originZ> <orientation> <sections> <seedLo> <seedHi> <maxMutations> <itemId>
 ```
 
+`orientation` must be one of `NORTH`, `SOUTH`, `WEST`, or `EAST`.
+
 Search and render from a captured corridor id:
 
 ```text
 /mineshaftforcer search corridor_preview_capture <captureId> <maxMutations> <itemId>
 ```
+
+If you are using the mod in a real world, this is the command you usually want.
 
 The captured preview path uses that pre-generation snapshot, then searches floor-removal, support-roof, and cobweb-heightmap short-circuit mutations. Matching results are evaluated with vanilla `BuiltInLootTables.ABANDONED_MINESHAFT` and rendered as place/break/target blueprint boxes.
 
@@ -164,6 +203,12 @@ Parameter meanings:
 - `maxWallOpenings`: maximum number of wall openings to enumerate. Vanilla requires `1..5` openings.
 
 Higher `maxSupportBreaks` and `maxWallOpenings` explore a larger search space and can be much slower.
+
+The loot search only returns controllable cross-chunk blueprints:
+
+- the dungeon shell must cross the spawner chunk boundary;
+- floor and ceiling blocks inside the spawner chunk must already be solid;
+- support breaks and wall openings are only selected outside the spawner chunk.
 
 ### Show Next Loot Result
 
