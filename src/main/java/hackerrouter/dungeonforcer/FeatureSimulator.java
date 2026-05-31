@@ -1,6 +1,9 @@
 package hackerrouter.dungeonforcer;
 
 import hackerrouter.dungeonforcer.rng.WorldgenRandom;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +27,16 @@ public class FeatureSimulator {
         this.chunkBlockZ = chunkBlockZ;
     }
 
+    private boolean isValidOrigin(BlockPos worldPos, int lx, int lz, int sizeX1, int sizeZ1) {
+        boolean crossesChunkBorder = lx - sizeX1 < 0
+                || lx + sizeX1 > 15
+                || lz - sizeZ1 < 0
+                || lz + sizeZ1 > 15;
+        var level = Minecraft.getInstance().level;
+        return crossesChunkBorder && level != null
+                && level.getHeight(Heightmap.Types.WORLD_SURFACE, worldPos) > worldPos.getY();
+    }
+
     public PlaceResult simulate(WorldgenRandom random, int originX, int originY, int originZ,
                                 boolean isDeep, int attemptIndex) {
         shellChanges.clear();
@@ -36,6 +49,9 @@ public class FeatureSimulator {
         int lz = originZ - chunkBlockZ;
         int sizeX1 = sizeX + 1;
         int sizeZ1 = sizeZ + 1;
+        if (!isValidOrigin(new BlockPos(originX, originY, originZ), lx, lz, sizeX1, sizeZ1)) {
+            return new PlaceResult(null, DungeonCheckResult.fail(), sizeX, sizeZ, lx, lz);
+        }
 
         DungeonCheckResult check = checkConditions(lx, lz, originY, sizeX, sizeZ);
         if (!check.pass) {

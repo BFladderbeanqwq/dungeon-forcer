@@ -4,8 +4,12 @@ import hackerrouter.dungeonforcer.DungeonFinder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.data.worldgen.placement.CavePlacements;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 
 public class World {
 
@@ -63,6 +67,21 @@ public class World {
         }
 
         return DungeonFinder.AIR;
+    }
+
+    public static boolean canPlaceMonsterRoom(int worldX, int worldY, int worldZ, boolean deep) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.getSingleplayerServer() == null) {
+            return true;
+        }
+        ServerLevel level = mc.getSingleplayerServer().overworld();
+        PlacedFeature feature = level.registryAccess()
+                .lookupOrThrow(Registries.PLACED_FEATURE)
+                .getOrThrow(deep ? CavePlacements.MONSTER_ROOM_DEEP : CavePlacements.MONSTER_ROOM)
+                .value();
+        return level.getChunkSource().getGenerator()
+                .getBiomeGenerationSettings(level.getBiome(new BlockPos(worldX, worldY, worldZ)))
+                .hasFeature(feature);
     }
 
     public static String getDimension() {

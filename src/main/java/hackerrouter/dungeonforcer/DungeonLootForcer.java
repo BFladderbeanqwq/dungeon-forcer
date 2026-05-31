@@ -13,13 +13,14 @@ public class DungeonLootForcer {
     private final byte[] buffer = new byte[DungeonFinder.BUFFER_SIZE];
     private int chunkBlockX;
     private int chunkBlockZ;
+    private List<AttemptGeometry> priorAttempts = List.of();
 
     public List<DungeonLootBlueprint> runForChunk(
             int chunkX, int chunkZ, long worldSeed,
             int featureIndexNormal, int featureIndexDeep,
             String targetItem, int maxResults,
             int maxFloorBreaks, int maxChestBlockers,
-            DungeonFinder.BlockReader blockReader) {
+            DungeonFinder.BlockReader blockReader, BiomeReader biomeReader) {
 
         this.chunkBlockX = chunkX * 16;
         this.chunkBlockZ = chunkZ * 16;
@@ -31,12 +32,16 @@ public class DungeonLootForcer {
 
         searchFeature(results, decorationSeed, featureIndexNormal, false,
                 DungeonFinder.NORMAL_ATTEMPTS, DungeonFinder.NORMAL_Y_MIN, DungeonFinder.NORMAL_Y_MAX,
-                targetItem, maxResults, maxFloorBreaks, maxChestBlockers);
+                targetItem, maxResults, maxFloorBreaks, maxChestBlockers, List.of(), biomeReader);
 
         if (featureIndexDeep >= 0 && results.size() < maxResults) {
+            List<AttemptGeometry> normalAttempts = collectFailurePathAttempts(
+                    decorationSeed, featureIndexNormal,
+                    DungeonFinder.NORMAL_ATTEMPTS, DungeonFinder.NORMAL_Y_MIN, DungeonFinder.NORMAL_Y_MAX,
+                    false, biomeReader);
             searchFeature(results, decorationSeed, featureIndexDeep, true,
                     DungeonFinder.DEEP_ATTEMPTS, DungeonFinder.DEEP_Y_MIN, DungeonFinder.DEEP_Y_MAX,
-                    targetItem, maxResults, maxFloorBreaks, maxChestBlockers);
+                    targetItem, maxResults, maxFloorBreaks, maxChestBlockers, normalAttempts, biomeReader);
         }
 
         return results;
@@ -45,10 +50,12 @@ public class DungeonLootForcer {
     private void searchFeature(List<DungeonLootBlueprint> results, long decorationSeed, int featureIndex,
                                boolean deep, int attempts, int yMin, int yMax,
                                String targetItem, int maxResults,
-                               int maxFloorBreaks, int maxChestBlockers) {
+                               int maxFloorBreaks, int maxChestBlockers,
+                               List<AttemptGeometry> earlierFeatureAttempts, BiomeReader biomeReader) {
         WorldgenRandom rng = new WorldgenRandom(0L);
         rng.setFeatureSeed(decorationSeed, featureIndex, DungeonFinder.STEP_ORDINAL);
         int yRange = yMax - yMin + 1;
+        List<AttemptGeometry> previous = new ArrayList<>(earlierFeatureAttempts);
 
         for (int attempt = 0; attempt < attempts && results.size() < maxResults; attempt++) {
             int px = rng.nextInt(16);
@@ -59,6 +66,9 @@ public class DungeonLootForcer {
 
             int originX = chunkBlockX + px;
             int originZ = chunkBlockZ + pz;
+            if (!biomeReader.canPlace(originX, py, originZ, deep)) {
+                continue;
+            }
 
             WorldgenRandom attemptRng = new WorldgenRandom(new XoroshiroRandomSource(attemptLo, attemptHi));
             int sizeX = attemptRng.nextInt(2) + 2;
@@ -66,13 +76,37 @@ public class DungeonLootForcer {
             AttemptGeometry geometry = buildGeometry(originX, py, originZ, sizeX, sizeZ);
             if (!crossesSpawnerChunkBoundary(geometry) || !hasSolidInChunkFloorAndCeiling(geometry)) {
                 rng = attemptRng;
+                previous.add(geometry);
                 continue;
             }
+            priorAttempts = List.copyOf(previous);
             enumerateFloorMasks(results, attemptLo, attemptHi, geometry, deep, attempt,
                     targetItem, maxResults, maxFloorBreaks, maxChestBlockers);
 
             rng = attemptRng;
+            previous.add(geometry);
         }
+    }
+
+    private List<AttemptGeometry> collectFailurePathAttempts(long decorationSeed, int featureIndex,
+                                                              int attempts, int yMin, int yMax,
+                                                              boolean deep, BiomeReader biomeReader) {
+        WorldgenRandom rng = new WorldgenRandom(0L);
+        rng.setFeatureSeed(decorationSeed, featureIndex, DungeonFinder.STEP_ORDINAL);
+        int yRange = yMax - yMin + 1;
+        List<AttemptGeometry> geometries = new ArrayList<>();
+        for (int attempt = 0; attempt < attempts; attempt++) {
+            int originX = chunkBlockX + rng.nextInt(16);
+            int originZ = chunkBlockZ + rng.nextInt(16);
+            int originY = rng.nextInt(yRange) + yMin;
+            if (!biomeReader.canPlace(originX, originY, originZ, deep)) {
+                continue;
+            }
+            int sizeX = rng.nextInt(2) + 2;
+            int sizeZ = rng.nextInt(2) + 2;
+            geometries.add(buildGeometry(originX, originY, originZ, sizeX, sizeZ));
+        }
+        return geometries;
     }
 
     private void enumerateFloorMasks(List<DungeonLootBlueprint> results,
@@ -160,6 +194,7 @@ public class DungeonLootForcer {
                                 boolean deep, int attemptIndex, String targetItem, int maxResults,
                                 List<Cell> floorBreaks, List<Cell> openings) {
         if (results.size() >= maxResults) return;
+        if (!allPriorAttemptsFail(geometry, floorBreaks, openings)) return;
         SimulationResult sim = simulateLayout(attemptLo, attemptHi, geometry, floorBreaks, openings);
         if (sim.firstLootSeed != 0L
                 && SimpleDungeonLootSimulator.contains(sim.firstLootSeed, targetItem)
@@ -248,6 +283,9 @@ public class DungeonLootForcer {
 
         Set<Long> supportAir = toKeySet(floorBreaks);
         Set<Long> wallOpenings = toKeySet(blockers);
+        if (!hasValidHoleCount(geometry, wallOpenings)) {
+            return new SimulationResult();
+        }
         Set<Long> generatedChests = new HashSet<>();
         boolean[][][] solid = buildPostShellState(geometry, supportAir, wallOpenings, rng);
 
@@ -277,6 +315,77 @@ public class DungeonLootForcer {
         return result;
     }
 
+    private boolean allPriorAttemptsFail(AttemptGeometry targetGeometry, List<Cell> floorBreaks, List<Cell> wallOpenings) {
+        Set<Long> supportAir = toKeySet(floorBreaks);
+        Set<Long> openings = toKeySet(wallOpenings);
+        for (AttemptGeometry prior : priorAttempts) {
+            if (passesPreparedPrecheck(prior, targetGeometry, supportAir, openings)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean passesPreparedPrecheck(AttemptGeometry attempt, AttemptGeometry target,
+                                           Set<Long> supportAir, Set<Long> wallOpenings) {
+        int holes = 0;
+        for (int dx = -attempt.sizeX - 1; dx <= attempt.sizeX + 1; dx++) {
+            for (int dz = -attempt.sizeZ - 1; dz <= attempt.sizeZ + 1; dz++) {
+                int wx = attempt.originX + dx;
+                int wz = attempt.originZ + dz;
+                if (!isPreparedSolid(wx, attempt.originY - 1, wz, target, supportAir, wallOpenings)
+                        || !isPreparedSolid(wx, attempt.originY + 4, wz, target, supportAir, wallOpenings)) {
+                    return false;
+                }
+                if (isWall(attempt, dx, dz)
+                        && !isPreparedSolid(wx, attempt.originY, wz, target, supportAir, wallOpenings)
+                        && !isPreparedSolid(wx, attempt.originY + 1, wz, target, supportAir, wallOpenings)) {
+                    holes++;
+                    if (holes > 5) return false;
+                }
+            }
+        }
+        return holes >= 1;
+    }
+
+    private boolean isPreparedSolid(int wx, int wy, int wz, AttemptGeometry target,
+                                    Set<Long> supportAir, Set<Long> wallOpenings) {
+        int dx = wx - target.originX;
+        int dz = wz - target.originZ;
+        if (dx < -target.sizeX - 1 || dx > target.sizeX + 1
+                || dz < -target.sizeZ - 1 || dz > target.sizeZ + 1
+                || !isOutsideSpawnerChunk(wx, wz)) {
+            return isSolid(wx, wy, wz);
+        }
+        long key = Cell.key(dx, dz);
+        int dy = wy - target.originY;
+        if (dy == -2) return !supportAir.contains(key);
+        if (dy == -1 || dy == 4) return true;
+        if (isWall(target, dx, dz) && dy >= 0 && dy <= 3) {
+            return !wallOpenings.contains(key) || dy >= 2;
+        }
+        return isSolid(wx, wy, wz);
+    }
+
+    private boolean hasValidHoleCount(AttemptGeometry geometry, Set<Long> wallOpenings) {
+        int holes = 0;
+        for (Cell wall : geometry.wallCells) {
+            int wx = geometry.originX + wall.dx;
+            int wz = geometry.originZ + wall.dz;
+            boolean opening;
+            if (isOutsideSpawnerChunk(wx, wz)) {
+                opening = wallOpenings.contains(wall.key());
+            } else {
+                opening = !isSolid(wx, geometry.originY, wz)
+                        && !isSolid(wx, geometry.originY + 1, wz);
+            }
+            if (opening && ++holes > 5) {
+                return false;
+            }
+        }
+        return holes >= 1;
+    }
+
     private boolean[][][] buildPostShellState(AttemptGeometry geometry, Set<Long> supportAir, Set<Long> wallOpenings,
                                               WorldgenRandom rng) {
         int xLen = geometry.sizeX * 2 + 3;
@@ -285,15 +394,26 @@ public class DungeonLootForcer {
 
         for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
             for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
-                setSolid(solid, geometry, dx, -2, dz, !supportAir.contains(Cell.key(dx, dz)));
-                setSolid(solid, geometry, dx, -1, dz, true);
-                setSolid(solid, geometry, dx, 4, dz, true);
+                int wx = geometry.originX + dx;
+                int wz = geometry.originZ + dz;
+                boolean outside = isOutsideSpawnerChunk(wx, wz);
+                long key = Cell.key(dx, dz);
+
+                setSolid(solid, geometry, dx, -2, dz, outside
+                        ? !supportAir.contains(key)
+                        : isSolid(wx, geometry.originY - 2, wz));
+                setSolid(solid, geometry, dx, -1, dz, outside
+                        || isSolid(wx, geometry.originY - 1, wz));
+                setSolid(solid, geometry, dx, 4, dz, outside
+                        || isSolid(wx, geometry.originY + 4, wz));
 
                 boolean wall = isWall(geometry, dx, dz);
                 if (wall) {
-                    boolean opening = wallOpenings.contains(Cell.key(dx, dz));
                     for (int dy = 0; dy <= 3; dy++) {
-                        setSolid(solid, geometry, dx, dy, dz, !opening || dy >= 2);
+                        boolean controlledWall = !wallOpenings.contains(key) || dy >= 2;
+                        setSolid(solid, geometry, dx, dy, dz, outside
+                                ? controlledWall
+                                : isSolid(wx, geometry.originY + dy, wz));
                     }
                 }
             }
@@ -367,7 +487,6 @@ public class DungeonLootForcer {
         for (Cell cell : geometry.wallCells) {
             blueprint.wallBlocks.add(worldPos(geometry, cell, 0));
         }
-        addRequiredPlaceBlocks(blueprint, geometry, blockers);
         for (Cell cell : floorBreaks) {
             blueprint.floorBreaks.add(worldPos(geometry, cell, -2));
         }
@@ -375,18 +494,29 @@ public class DungeonLootForcer {
             blueprint.floorBreaks.add(worldPos(geometry, cell, 0));
             blueprint.floorBreaks.add(worldPos(geometry, cell, 1));
         }
+        addRequiredPlaceBlocks(blueprint, geometry, floorBreaks, blockers);
         for (Cell cell : sim.chests) {
             blueprint.chestPositions.add(worldPos(geometry, cell, 0));
         }
         return blueprint;
     }
 
-    private void addRequiredPlaceBlocks(DungeonLootBlueprint blueprint, AttemptGeometry geometry, List<Cell> wallOpenings) {
+    private void addRequiredPlaceBlocks(DungeonLootBlueprint blueprint, AttemptGeometry geometry,
+                                        List<Cell> floorBreaks, List<Cell> wallOpenings) {
+        Set<Long> floorBreakSet = toKeySet(floorBreaks);
         Set<Long> openingSet = toKeySet(wallOpenings);
         for (int dx = -geometry.sizeX - 1; dx <= geometry.sizeX + 1; dx++) {
             for (int dz = -geometry.sizeZ - 1; dz <= geometry.sizeZ + 1; dz++) {
+                int wx = geometry.originX + dx;
+                int wz = geometry.originZ + dz;
+                if (!isOutsideSpawnerChunk(wx, wz)) {
+                    continue;
+                }
                 blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), -1));
                 blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), 4));
+                if (!floorBreakSet.contains(Cell.key(dx, dz))) {
+                    blueprint.requiredPlaceBlocks.add(worldPos(geometry, new Cell(dx, dz), -2));
+                }
 
                 boolean wall = dx == -geometry.sizeX - 1 || dx == geometry.sizeX + 1
                         || dz == -geometry.sizeZ - 1 || dz == geometry.sizeZ + 1;
@@ -395,10 +525,8 @@ public class DungeonLootForcer {
                         if (openingSet.contains(Cell.key(dx, dz)) && dy <= 1) {
                             continue;
                         }
-                        int wx = geometry.originX + dx;
                         int wy = geometry.originY + dy;
-                        int wz = geometry.originZ + dz;
-                        blueprint.requiredPlaceBlocks.add(new int[]{wx, wy, wz});
+                        blueprint.chestBlockers.add(new int[]{wx, wy, wz});
                     }
                 }
             }
@@ -538,4 +666,10 @@ public class DungeonLootForcer {
             return (((long) dx) << 32) ^ (dz & 0xffffffffL);
         }
     }
+
+    @FunctionalInterface
+    public interface BiomeReader {
+        boolean canPlace(int worldX, int worldY, int worldZ, boolean deep);
+    }
+
 }

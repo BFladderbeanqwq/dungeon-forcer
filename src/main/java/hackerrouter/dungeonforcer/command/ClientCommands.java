@@ -185,7 +185,8 @@ public class ClientCommands {
                 chunkPos.x(), chunkPos.z(), seed,
                 normalIndex, deepIndex,
                 targetItem, maxResults, maxFloorBreaks, maxChestBlockers,
-                (x, y, z) -> World.getBlockState(x, y, z));
+                (x, y, z) -> World.getBlockState(x, y, z),
+                (x, y, z, deep) -> World.canPlaceMonsterRoom(x, y, z, deep));
         currentLootResultIndex = 0;
 
         if (currentLootResults.isEmpty()) {
@@ -210,9 +211,9 @@ public class ClientCommands {
 
     private static void showCurrentLootResult() {
         DungeonLootBlueprint b = currentLootResults.get(currentLootResultIndex);
-        Chat.send(String.format("搂6[DungeonForcer-v2] 搂fLoot result %d/%d @ (%d, %d, %d) size=%dx%d hitChest=%d%s",
+        Chat.send(String.format("搂6[DungeonForcer-v2] 搂fLoot result %d/%d @ (%d, %d, %d) size=%dx%d attempt=%d hitChest=%d%s",
                 currentLootResultIndex + 1, currentLootResults.size(),
-                b.originX, b.originY, b.originZ, b.sizeX, b.sizeZ, b.hitChestIndex,
+                b.originX, b.originY, b.originZ, b.sizeX, b.sizeZ, b.attemptIndex, b.hitChestIndex,
                 b.isDeep ? " 搂8[DEEP]" : ""));
         Chat.send(String.format("  搂7lootSeed[1]=%d lootSeed[2]=%d spawner=%s",
                 b.firstChestLootSeed, b.secondChestLootSeed, b.spawnerType));
@@ -220,6 +221,7 @@ public class ClientCommands {
                 b.requiredPlaceBlocks.size() + b.chestBlockers.size(),
                 b.floorBreaks.size(), b.chestPositions.size()));
         sendPositions("required shell", b.requiredPlaceBlocks);
+        sendPositions("chest controls", b.chestBlockers);
         sendPositions("break support/openings", b.floorBreaks);
         sendPositions("chests", b.chestPositions);
 

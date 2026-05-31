@@ -28,7 +28,7 @@ public class DungeonLootBlueprint {
             spawner.blockModifications.add(new int[]{pos[0], pos[1], pos[2], Spawner.ACTION_PLACE});
         }
         for (int[] pos : chestBlockers) {
-            spawner.blockModifications.add(new int[]{pos[0], pos[1], pos[2], Spawner.ACTION_PLACE});
+            spawner.blockModifications.add(new int[]{pos[0], pos[1], pos[2], Spawner.ACTION_CHEST_CONTROL});
         }
         for (int[] pos : floorBreaks) {
             spawner.blockModifications.add(new int[]{pos[0], pos[1], pos[2], Spawner.ACTION_BREAK});
