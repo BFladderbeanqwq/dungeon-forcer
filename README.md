@@ -209,6 +209,7 @@ The loot search only returns controllable cross-chunk blueprints:
 - the dungeon shell must cross the spawner chunk boundary;
 - floor and ceiling blocks inside the spawner chunk must already be solid;
 - support breaks and wall openings are only selected outside the spawner chunk.
+- the chest containing the requested target item must generate inside the spawner chunk.
 
 ### Show Next Loot Result
 

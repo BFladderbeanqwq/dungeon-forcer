@@ -161,11 +161,21 @@ public class DungeonLootForcer {
                                 List<Cell> floorBreaks, List<Cell> openings) {
         if (results.size() >= maxResults) return;
         SimulationResult sim = simulateLayout(attemptLo, attemptHi, geometry, floorBreaks, openings);
-        if (sim.firstLootSeed != 0L && SimpleDungeonLootSimulator.contains(sim.firstLootSeed, targetItem)) {
+        if (sim.firstLootSeed != 0L
+                && SimpleDungeonLootSimulator.contains(sim.firstLootSeed, targetItem)
+                && isChestInSpawnerChunk(geometry, sim, 1)) {
             results.add(toBlueprint(geometry, deep, attemptIndex, 1, sim, floorBreaks, openings));
-        } else if (sim.secondLootSeed != 0L && SimpleDungeonLootSimulator.contains(sim.secondLootSeed, targetItem)) {
+        } else if (sim.secondLootSeed != 0L
+                && SimpleDungeonLootSimulator.contains(sim.secondLootSeed, targetItem)
+                && isChestInSpawnerChunk(geometry, sim, 2)) {
             results.add(toBlueprint(geometry, deep, attemptIndex, 2, sim, floorBreaks, openings));
         }
+    }
+
+    private boolean isChestInSpawnerChunk(AttemptGeometry geometry, SimulationResult sim, int chestIndex) {
+        if (sim.chests.size() < chestIndex) return false;
+        Cell chest = sim.chests.get(chestIndex - 1);
+        return !isOutsideSpawnerChunk(geometry.originX + chest.dx, geometry.originZ + chest.dz);
     }
 
     private List<Cell> findRelevantOpenings(long attemptLo, long attemptHi, AttemptGeometry geometry, List<Cell> floorBreaks) {
